@@ -28,7 +28,7 @@ discordInit().catch((error) => {
 async function discordInit(): Promise<void> {
   await registerCommands();
 
-  client.on('ready', () => {
+  client.on('clientReady', () => {
     logger.info(`Bot logado como ${client.user?.tag}`);
   });
 
