@@ -14,33 +14,33 @@ export const SUZI_COLORS = {
 };
 
 const EMOJI = {
-  game: '🎮',
-  brain: '🧠',
-  dice: '🎲',
-  register: '🧾',
-  profile: '✨',
-  class: '🧭',
-  level: '⭐',
-  warning: '⚠️',
-  trophy: '🏆',
-  scroll: '📜',
+  game: '\u{1F3AE}',
+  brain: '\u{1F9E0}',
+  dice: '\u{1F3B2}',
+  register: '\u{1F9FE}',
+  profile: '\u2728',
+  class: '\u{1F9ED}',
+  level: '\u2B50',
+  warning: '\u26A0\uFE0F',
+  trophy: '\u{1F3C6}',
+  scroll: '\u{1F4DC}',
 };
 
 const CLASS_EMOJI: Record<string, string> = {
-  guerreiro: '⚔️',
-  mago: '🧙',
-  arqueiro: '🏹',
-  ladino: '🗡️',
-  clerigo: '✨',
-  paladino: '🛡️',
+  guerreiro: '\u2694\uFE0F',
+  mago: '\u{1F9D9}',
+  arqueiro: '\u{1F3F9}',
+  ladino: '\u{1F5E1}\uFE0F',
+  clerigo: '\u2728',
+  paladino: '\u{1F6E1}\uFE0F',
 };
 
 const HISTORY_LABELS: Record<string, string> = {
-  roll: '🎲 Rolagem',
-  pergunta: '🧠 Pergunta',
-  jogo: '🎮 Jogo',
-  nivel: '⭐ Nível',
-  register: '🧾 Registro',
+  roll: `${EMOJI.dice} Rolagem`,
+  pergunta: `${EMOJI.brain} Pergunta`,
+  jogo: `${EMOJI.game} Jogo`,
+  nivel: `${EMOJI.level} Nivel`,
+  register: `${EMOJI.register} Registro`,
 };
 
 type AchievementSummary = {
@@ -87,7 +87,7 @@ function formatHistory(events: HistoryEvent[] = []): string {
   const lines = events.slice(0, 3).map((event) => {
     const label = HISTORY_LABELS[event.type] ?? event.type;
     const time = `<t:${Math.floor(event.ts / 1000)}:R>`;
-    return `• ${label}: ${safeText(event.label, 60)} ${time}`;
+    return `- ${label}: ${safeText(event.label, 60)} ${time}`;
   });
   return safeText(lines.join('\n'), 1024);
 }
@@ -102,7 +102,7 @@ function formatTitle(equippedTitle: string | null | undefined, classTitle: strin
 function formatXp(xp?: XpState): string {
   if (!xp) return '-';
   const streak = xp.streak.days > 1 ? `\nStreak: ${xp.streak.days} dias` : '';
-  return `XP: ${xp.xp}\nNível: ${xp.level}${streak}`;
+  return `XP: ${xp.xp}\nNivel: ${xp.level}${streak}`;
 }
 
 export function createSuziEmbed(color: keyof typeof SUZI_COLORS = 'primary'): EmbedBuilder {
@@ -118,7 +118,7 @@ export function buildAchievementUnlockEmbed(unlocked: AchievementDefinition[]): 
       .setDescription(item.description);
   }
 
-  const lines = unlocked.map((item) => `• ${item.emoji} ${item.name}`);
+  const lines = unlocked.map((item) => `- ${item.emoji} ${item.name}`);
   return createSuziEmbed('accent')
     .setTitle(`${EMOJI.trophy} Conquistas desbloqueadas`)
     .setDescription(lines.join('\n'));
@@ -150,7 +150,7 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
         value: safeText(
           '/register\n- Registra seu jogador\n' +
             '/perfil user:<opcional>\n- Mostra o perfil\n' +
-            '/nivel nivel:<1..99> user:<opcional>\n- Atualiza o nível do personagem\n' +
+            '/nivel nivel:<1..99> user:<opcional>\n- Atualiza o nivel do personagem\n' +
             '/settitle title:<titulo>\n- Equipa um titulo desbloqueado\n' +
             '/titleclear\n- Remove o titulo equipado\n' +
             '/conquistas\n- Lista suas conquistas',
@@ -175,7 +175,7 @@ export function buildRegisterSuccessEmbed(user: User, player: PlayerProfile): Em
     .addFields(
       { name: 'Personagem', value: safeText(player.characterName, 1024), inline: true },
       { name: `${EMOJI.class} Classe`, value: safeText(player.className, 1024), inline: true },
-      { name: `${EMOJI.level} Nível inicial`, value: String(player.level), inline: true },
+      { name: `${EMOJI.level} Nivel inicial`, value: String(player.level), inline: true },
       {
         name: 'Proximos passos',
         value: safeText('Use /perfil para ver seu perfil\nUse /nivel para evoluir seu personagem', 1024),
@@ -207,7 +207,7 @@ export function buildProfileEmbed(user: User, player: PlayerProfile, extras: Pro
     .addFields(
       { name: 'Personagem', value: safeText(player.characterName, 1024), inline: true },
       { name: `${EMOJI.class} Classe`, value: `${classEmoji} ${safeText(player.className, 1000)}`, inline: true },
-      { name: `${EMOJI.level} Nível`, value: String(player.level), inline: true },
+      { name: `${EMOJI.level} Nivel`, value: String(player.level), inline: true },
       { name: 'Titulos', value: formatTitle(extras.equippedTitle, extras.classTitle), inline: false },
       { name: 'Suzi XP', value: formatXp(extras.xp), inline: true },
     )

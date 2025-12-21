@@ -6,9 +6,14 @@ import { appendHistory as appendProfileHistory } from '../../services/historySer
 import { getPlayerProfile, updatePlayerLevel } from '../../services/profileService.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { awardXp } from '../../services/xpService.js';
+import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
+import { logError, logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildMissingProfileEmbed, createSuziEmbed } from '../embeds.js';
+
+const EMOJI_WARNING = '\u26A0\uFE0F';
+const EMOJI_STAR = '\u2B50';
+const EMOJI_SPARKLE = '\u2728';
 
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
@@ -21,11 +26,11 @@ function safeText(text: string, maxLen: number): string {
 export const nivelCommand = {
   data: new SlashCommandBuilder()
     .setName('nivel')
-    .setDescription('Atualiza o nível do personagem')
+    .setDescription('Atualiza o nivel do personagem')
     .addIntegerOption((option) =>
       option
         .setName('nivel')
-        .setDescription('Novo nível do personagem (1 a 99)')
+        .setDescription('Novo nivel do personagem (1 a 99)')
         .setRequired(true)
         .setMinValue(1)
         .setMaxValue(99),
@@ -44,7 +49,7 @@ export const nivelCommand = {
       if (!hasPermission && !env.allowAdminEdit) {
         await safeRespond(
           interaction,
-          '⚠️ Voce precisa de permissao de moderador para editar o nivel de outra pessoa.',
+          `${EMOJI_WARNING} Voce precisa de permissao de moderador para editar o nivel de outra pessoa.`,
         );
         return;
       }
@@ -60,23 +65,23 @@ export const nivelCommand = {
 
       const updated = updatePlayerLevel(target.id, level);
       if (!updated) {
-        await safeRespond(interaction, '⚠️ Nao consegui atualizar o nivel agora.');
+        await safeRespond(interaction, `${EMOJI_WARNING} Nao consegui atualizar o nivel agora.`);
         return;
       }
 
       appendProfileHistory(target.id, {
         type: 'nivel',
-        label: `Nível ${level}`,
+        label: `Nivel ${level}`,
       });
 
       const embed = createSuziEmbed('success')
-        .setTitle('⭐ Nível atualizado')
+        .setTitle(`${EMOJI_STAR} Nivel atualizado`)
         .setThumbnail(target.displayAvatarURL({ size: 128 }))
         .addFields(
           { name: 'Jogador', value: safeText(updated.playerName, 1024), inline: true },
           { name: 'Personagem', value: safeText(updated.characterName, 1024), inline: true },
           { name: 'Classe', value: safeText(updated.className, 1024), inline: true },
-          { name: 'Novo nível', value: String(updated.level), inline: true },
+          { name: 'Novo nivel', value: String(updated.level), inline: true },
         );
 
       await safeRespond(interaction, { embeds: [embed] });
@@ -84,7 +89,7 @@ export const nivelCommand = {
       if (isSelf) {
         const xpResult = awardXp(interaction.user.id, 1, { reason: 'nivel' });
         if (xpResult.leveledUp) {
-          await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+          await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
         }
       }
 
@@ -96,11 +101,11 @@ export const nivelCommand = {
           await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
       } catch (error) {
-        logger.warn('Falha ao registrar conquistas do /nivel', error);
+        logWarn('SUZI-CMD-002', error, { message: 'Falha ao registrar conquistas do /nivel' });
       }
     } catch (error) {
-      logger.error('Erro no comando /nivel', error);
-      await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
+      logError('SUZI-CMD-002', error, { message: 'Erro no comando /nivel' });
+      await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
     }
   },
 };

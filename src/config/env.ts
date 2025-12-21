@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
 
+import { logError } from '../utils/logging.js';
+
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config({ path: '.env' });
 }
@@ -15,10 +17,16 @@ export const env = {
 
 export function assertEnv(): void {
   const missing: string[] = [];
-  if (!env.discordToken) missing.push('DISCORD_TOKEN');
-  if (!env.discordAppId) missing.push('DISCORD_APP_ID');
+  if (!env.discordToken) {
+    missing.push('DISCORD_TOKEN');
+    logError('SUZI-ENV-001', new Error('DISCORD_TOKEN ausente'), { message: 'Variavel obrigatoria faltando' });
+  }
+  if (!env.discordAppId) {
+    missing.push('DISCORD_APP_ID');
+    logError('SUZI-ENV-002', new Error('DISCORD_APP_ID ausente'), { message: 'Variavel obrigatoria faltando' });
+  }
 
   if (missing.length) {
-    throw new Error(`Variáveis ausentes: ${missing.join(', ')}`);
+    throw new Error(`Variaveis ausentes: ${missing.join(', ')}`);
   }
 }

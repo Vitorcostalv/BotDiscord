@@ -1,16 +1,19 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { trackEvent } from '../../achievements/service.js';
+import { parseDice, rollDice } from '../../services/dice.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro } from '../../services/profileService.js';
-import { parseDice, rollDice } from '../../services/dice.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { awardXp } from '../../services/xpService.js';
+import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
-import { buildAchievementUnlockEmbed } from '../embeds.js';
+import { logWarn } from '../../utils/logging.js';
 import { withCooldown } from '../cooldown.js';
+import { buildAchievementUnlockEmbed } from '../embeds.js';
 
+const EMOJI_DICE = '\u{1F3B2}';
+const EMOJI_SPARKLE = '\u2728';
 const MAX_ROLLS_DISPLAY = 30;
 const HISTORY_ROLLS_DISPLAY = 8;
 
@@ -35,7 +38,7 @@ function formatRollMessage(expression: string, rolls: number[], total: number): 
     results = `${results}, ... +${remaining} resultados`;
   }
 
-  return `🎲 Rolagem: ${expression}\nResultados (ordenados): ${results}\nTotal: ${total}`;
+  return `${EMOJI_DICE} Rolagem: ${expression}\nResultados (ordenados): ${results}\nTotal: ${total}`;
 }
 
 function formatHistoryRoll(expression: string, rolls: number[], total: number): string {
@@ -83,8 +86,11 @@ export const rollCommand = {
       const result = buildRollMessage(input);
 
       if (!result.ok) {
-        logger.warn('Entrada invalida no /roll', { input });
-        await safeRespond(interaction, result.message);
+        logWarn('SUZI-ROLL-001', new Error('Expressao invalida'), {
+          message: 'Entrada invalida no /roll',
+          input,
+        });
+        await safeRespond(interaction, toPublicMessage('SUZI-ROLL-001'));
         return;
       }
 
@@ -103,7 +109,7 @@ export const rollCommand = {
 
       const xpResult = awardXp(interaction.user.id, 2, { reason: 'roll', cooldownSeconds: 5 });
       if (xpResult.leveledUp) {
-        await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+        await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
       }
 
       try {
@@ -118,7 +124,7 @@ export const rollCommand = {
           await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
       } catch (error) {
-        logger.warn('Falha ao registrar conquistas do /roll', error);
+        logWarn('SUZI-CMD-002', error, { message: 'Falha ao registrar conquistas do /roll' });
       }
     });
   },

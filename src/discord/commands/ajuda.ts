@@ -3,7 +3,7 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 import { trackEvent } from '../../achievements/service.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
+import { logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildHelpEmbed } from '../embeds.js';
 
 export const ajudaCommand = {
@@ -24,7 +24,7 @@ export const ajudaCommand = {
         await safeRespond(interaction, { embeds: [unlockEmbed] });
       }
     } catch (error) {
-      logger.warn('Falha ao registrar conquistas do /ajuda', error);
+      logWarn('SUZI-CMD-002', error, { message: 'Falha ao registrar conquistas do /ajuda' });
     }
   },
 };

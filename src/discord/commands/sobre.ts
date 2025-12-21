@@ -3,8 +3,10 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 import { trackEvent } from '../../achievements/service.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
+import { logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, createSuziEmbed } from '../embeds.js';
+
+const EMOJI_MOON = '\u{1F319}';
 
 export const sobreCommand = {
   data: new SlashCommandBuilder().setName('sobre').setDescription('Conheca a lore da Suzi'),
@@ -14,22 +16,24 @@ export const sobreCommand = {
 
     const botUser = interaction.client.user;
     const embed = createSuziEmbed('accent')
-      .setTitle('🌙 Sobre a Suzi')
+      .setTitle(`${EMOJI_MOON} Sobre a Suzi`)
       .setDescription(
-        'Dizem que Suzi surgiu entre mundos: um fio de dados, um bug antigo e uma centelha de magia gamer. ' +
-          'Ela guia jogadores, responde perguntas e transforma rolagens em historias com um toque misterioso.',
+        'Ninguem sabe exatamente quando Suzi apareceu. ' +
+          'Alguns dizem que foi depois de uma rolagem impossivel. Outros juram que foi quando alguem fez a pergunta certa.\n\n' +
+          'Ela vive nos intervalos: entre o dado e o resultado, entre a duvida e a resposta. ' +
+          'Observa, calcula e responde - sempre com um sorriso que parece saber mais do que diz.',
       )
       .addFields(
         {
           name: 'Curiosidades',
           value:
-            '• Coleciona resultados perfeitos em d20\n' +
-            '• Prefere respostas curtas e certeiras\n' +
-            '• Acredita que todo jogo tem um segredo oculto',
+            '- Tem carinho especial por resultados improvaveis\n' +
+            '- Gosta de jogadores persistentes\n' +
+            '- Acha que o acaso nunca e totalmente aleatorio',
         },
         {
           name: 'Frase assinatura',
-          value: '“Se o dado caiu, a historia ja escolheu um caminho.”',
+          value: '"Nem todo resultado e sorte. Alguns so estavam esperando."',
         },
       )
       .setFooter({ text: 'Suzi - Oraculo gamer' });
@@ -48,7 +52,7 @@ export const sobreCommand = {
         await safeRespond(interaction, { embeds: [unlockEmbed] });
       }
     } catch (error) {
-      logger.warn('Falha ao registrar conquistas do /sobre', error);
+      logWarn('SUZI-CMD-002', error, { message: 'Falha ao registrar conquistas do /sobre' });
     }
   },
 };

@@ -1,4 +1,4 @@
-import { logger } from '../utils/logger.js';
+import { logError, logWarn, logInfo } from '../utils/logging.js';
 
 import { parseDice, rollDice } from './dice.js';
 import type { PlayerProfile } from './profileService.js';
@@ -92,13 +92,15 @@ function sleep(ms: number): Promise<void> {
 async function fetchGemini(prompt: string): Promise<GeminiResult> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey || apiKey.length < MIN_API_KEY_LENGTH) {
-    logger.error('Gemini desabilitado: GEMINI_API_KEY ausente ou invalida');
+    logError('SUZI-ENV-003', new Error('GEMINI_API_KEY ausente ou invalida'), {
+      message: 'Gemini desabilitado por chave ausente/curta',
+    });
     return { ok: false, type: 'missing_key' };
   }
 
   if (process.env.DEBUG_GEMINI === 'true' && !debugKeyLogged) {
     const last4 = apiKey.slice(-4);
-    logger.info(`Gemini key loaded (len=${apiKey.length}, last4=${last4})`);
+    logInfo('SUZI-ENV-003', 'Gemini key loaded', { len: apiKey.length, last4 });
     debugKeyLogged = true;
   }
 
@@ -121,22 +123,40 @@ async function fetchGemini(prompt: string): Promise<GeminiResult> {
       if (!response.ok) {
         const bodyText = await response.text();
         const bodySnippet = bodyText.slice(0, 500);
-        logger.warn('Gemini respondeu com erro', {
+        const statusContext = {
+          message: 'Gemini respondeu com erro',
           status: response.status,
           statusText: response.statusText,
           body: bodySnippet,
           model,
           endpoint,
-        });
+        };
+
+        if (response.status === 429) {
+          logWarn('SUZI-GEMINI-003', new Error('Gemini rate limit'), statusContext);
+        } else if (response.status === 404) {
+          logWarn('SUZI-GEMINI-002', new Error('Gemini not found'), statusContext);
+        } else if (response.status === 403) {
+          logWarn('SUZI-GEMINI-001', new Error('Gemini forbidden'), statusContext);
+        } else {
+          logWarn('SUZI-GEMINI-004', new Error('Gemini error'), statusContext);
+        }
 
         if (response.status === 403) {
-          logger.error(
-            'Gemini retornou 403. Verifique se a API key e valida, nao vazada e se o modelo tem permissao.',
-          );
+          logError('SUZI-GEMINI-001', new Error('Gemini 403 forbidden'), {
+            message: 'Gemini retornou 403',
+            status: response.status,
+            model,
+          });
           return { ok: false, type: 'auth' };
         }
 
         if (response.status === 404) {
+          logError('SUZI-GEMINI-002', new Error('Gemini 404 not found'), {
+            message: 'Gemini retornou 404',
+            status: response.status,
+            model,
+          });
           return { ok: false, type: 'auth' };
         }
 
@@ -154,10 +174,18 @@ async function fetchGemini(prompt: string): Promise<GeminiResult> {
         return { ok: true, text };
       }
 
-      logger.warn('Resposta do Gemini sem texto', { model, endpoint });
+      logWarn('SUZI-GEMINI-004', new Error('Resposta sem texto'), {
+        message: 'Resposta do Gemini sem texto',
+        model,
+        endpoint,
+      });
       return { ok: false, type: 'other' };
     } catch (error) {
-      logger.warn('Erro ao consultar Gemini', { error, model, attempt });
+      if (error instanceof Error && error.name === 'AbortError') {
+        logWarn('SUZI-GEMINI-004', error, { message: 'Timeout ao chamar Gemini', model, attempt });
+      } else {
+        logWarn('SUZI-GEMINI-004', error, { message: 'Erro ao consultar Gemini', model, attempt });
+      }
       if (attempt < MAX_RETRIES) {
         await sleep(300 * 2 ** (attempt - 1));
         continue;

@@ -1,7 +1,7 @@
-import { dirname } from 'path';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
+import { dirname, extname } from 'path';
 
-import { logger } from '../utils/logger.js';
+import { logError, logWarn } from '../utils/logging.js';
 
 function ensureDir(path: string): void {
   const dir = dirname(path);
@@ -23,8 +23,12 @@ export function writeJsonAtomic(path: string, data: unknown): void {
       }
       renameSync(tempPath, path);
     } catch (finalError) {
-      logger.error('Falha ao gravar arquivo, usando escrita direta', finalError);
-      writeFileSync(path, JSON.stringify(data, null, 2), 'utf-8');
+      logError('SUZI-STORE-002', finalError, { message: 'Falha ao gravar JSON', path });
+      try {
+        writeFileSync(path, JSON.stringify(data, null, 2), 'utf-8');
+      } catch (directError) {
+        logError('SUZI-STORE-002', directError, { message: 'Falha ao gravar JSON direto', path });
+      }
     }
   }
 }
@@ -40,7 +44,14 @@ export function readJsonFile<T>(path: string, defaultValue: T): T {
   try {
     return JSON.parse(raw) as T;
   } catch (error) {
-    logger.error('Falha ao ler arquivo JSON, recriando', error);
+    const ext = extname(path);
+    const backupPath = ext ? path.replace(new RegExp(`${ext}$`), `.corrupt.${Date.now()}${ext}`) : `${path}.corrupt`;
+    try {
+      renameSync(path, backupPath);
+      logWarn('SUZI-STORE-001', error, { message: 'JSON corrompido, backup criado', path, backupPath });
+    } catch (backupError) {
+      logError('SUZI-STORE-001', backupError, { message: 'Falha ao mover JSON corrompido', path });
+    }
     writeJsonAtomic(path, defaultValue);
     return defaultValue;
   }

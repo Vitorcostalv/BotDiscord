@@ -12,6 +12,9 @@ import {
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { createSuziEmbed } from '../embeds.js';
 
+const EMOJI_TAG = '\u{1F3F7}\uFE0F';
+const EMOJI_WARNING = '\u26A0\uFE0F';
+
 const TITLE_CHOICES = listTitleDefinitions().map((title) => ({
   name: title.label,
   value: title.id,
@@ -34,14 +37,14 @@ export const settitleCommand = {
 
     const profile = getPlayerProfile(interaction.user.id);
     if (!profile) {
-      await safeRespond(interaction, '⚠️ Voce precisa se registrar com /register antes de equipar titulos.');
+      await safeRespond(interaction, `${EMOJI_WARNING} Voce precisa se registrar com /register antes de equipar titulos.`);
       return;
     }
 
     const input = interaction.options.getString('title', true);
     const definition = resolveTitleDefinition(input);
     if (!definition) {
-      await safeRespond(interaction, '⚠️ Esse titulo nao existe. Use /conquistas para ver o que desbloqueou.');
+      await safeRespond(interaction, `${EMOJI_WARNING} Esse titulo nao existe. Use /conquistas para ver o que desbloqueou.`);
       return;
     }
 
@@ -51,19 +54,19 @@ export const settitleCommand = {
       const unlockedText = unlocked.length ? unlocked.map(getTitleLabel).join('\n') : 'Nenhum.';
       await safeRespond(
         interaction,
-        `⚠️ Voce ainda nao desbloqueou esse titulo.\nTitulos liberados:\n${unlockedText}`,
+        `${EMOJI_WARNING} Voce ainda nao desbloqueou esse titulo.\nTitulos liberados:\n${unlockedText}`,
       );
       return;
     }
 
     const equipped = equipTitle(interaction.user.id, definition.id);
     if (!equipped) {
-      await safeRespond(interaction, '⚠️ Nao consegui equipar o titulo agora.');
+      await safeRespond(interaction, `${EMOJI_WARNING} Nao consegui equipar o titulo agora.`);
       return;
     }
 
     const embed = createSuziEmbed('success')
-      .setTitle('🏷️ Titulo equipado')
+      .setTitle(`${EMOJI_TAG} Titulo equipado`)
       .setDescription(`${equipped.label} agora esta ativo no seu perfil.`)
       .addFields({ name: 'Remover titulo', value: '/titleclear' });
 

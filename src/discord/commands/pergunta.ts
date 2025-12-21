@@ -7,10 +7,14 @@ import { formatSuziIntro, getPlayerProfile } from '../../services/profileService
 import { appendHistory, getHistory } from '../../services/storage.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { awardXp } from '../../services/xpService.js';
+import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
-import { buildAchievementUnlockEmbed, createSuziEmbed } from '../embeds.js';
+import { logError, logWarn } from '../../utils/logging.js';
 import { withCooldown } from '../cooldown.js';
+import { buildAchievementUnlockEmbed, createSuziEmbed } from '../embeds.js';
+
+const EMOJI_BRAIN = '\u{1F9E0}';
+const EMOJI_SPARKLE = '\u2728';
 
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
@@ -28,10 +32,8 @@ export const perguntaCommand = {
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
-      logger.warn('Ack /pergunta: interacao expirada antes do defer');
       return;
     }
-    logger.info('Ack /pergunta: defer ok');
 
     await withCooldown(interaction, 'pergunta', async () => {
       const userId = interaction.user.id;
@@ -60,7 +62,7 @@ export const perguntaCommand = {
         });
 
         const embed = createSuziEmbed('primary')
-          .setTitle('🧠 Pergunta & Resposta')
+          .setTitle(`${EMOJI_BRAIN} Pergunta & Resposta`)
           .addFields(
             { name: 'Pergunta', value: safeText(question, 1024) },
             { name: 'Resposta', value: safeText(response, 1024) },
@@ -74,7 +76,7 @@ export const perguntaCommand = {
 
         const xpResult = awardXp(userId, 5, { reason: 'pergunta', cooldownSeconds: 10 });
         if (xpResult.leveledUp) {
-          await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+          await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
         }
 
         try {
@@ -85,11 +87,11 @@ export const perguntaCommand = {
             await safeRespond(interaction, { embeds: [unlockEmbed] });
           }
         } catch (error) {
-          logger.warn('Falha ao registrar conquistas do /pergunta', error);
+          logWarn('SUZI-CMD-002', error, { message: 'Falha ao registrar conquistas do /pergunta' });
         }
       } catch (error) {
-        logger.error('Erro no comando /pergunta', error);
-        await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
+        logError('SUZI-CMD-002', error, { message: 'Erro no comando /pergunta' });
+        await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
       }
     });
   },

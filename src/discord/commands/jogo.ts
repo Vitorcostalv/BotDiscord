@@ -7,10 +7,14 @@ import { formatSuziIntro, getPlayerProfile } from '../../services/profileService
 import { getPreferences } from '../../services/storage.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { awardXp } from '../../services/xpService.js';
+import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
-import { buildAchievementUnlockEmbed } from '../embeds.js';
+import { logError, logWarn } from '../../utils/logging.js';
 import { withCooldown } from '../cooldown.js';
+import { buildAchievementUnlockEmbed } from '../embeds.js';
+
+const EMOJI_GAME = '\u{1F3AE}';
+const EMOJI_SPARKLE = '\u2728';
 
 function withLeadingEmoji(text: string, emoji: string): string {
   if (!text) return `${emoji}`;
@@ -58,12 +62,14 @@ export const jogoCommand = {
           kind: 'jogo',
         });
 
-        const content = intro ? `${intro}\n\n${withLeadingEmoji(response, '🎮')}` : withLeadingEmoji(response, '🎮');
+        const content = intro
+          ? `${intro}\n\n${withLeadingEmoji(response, EMOJI_GAME)}`
+          : withLeadingEmoji(response, EMOJI_GAME);
         await safeRespond(interaction, content);
 
         const xpResult = awardXp(userId, 5, { reason: 'jogo', cooldownSeconds: 10 });
         if (xpResult.leveledUp) {
-          await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+          await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
         }
 
         try {
@@ -74,11 +80,11 @@ export const jogoCommand = {
             await safeRespond(interaction, { embeds: [unlockEmbed] });
           }
         } catch (error) {
-          logger.warn('Falha ao registrar conquistas do /jogo', error);
+          logWarn('SUZI-CMD-002', error, { message: 'Falha ao registrar conquistas do /jogo' });
         }
       } catch (error) {
-        logger.error('Erro no comando /jogo', error);
-        await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
+        logError('SUZI-CMD-002', error, { message: 'Erro no comando /jogo' });
+        await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
       }
     });
   },

@@ -1,7 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-import { logger } from '../utils/logger.js';
+import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
 type UserHistoryEntry = {
   type: 'pergunta' | 'jogo';
@@ -38,48 +37,8 @@ const STORAGE_PATH = join(DATA_DIR, 'storage.json');
 const PLAYERS_PATH = join(DATA_DIR, 'players.json');
 const HISTORY_LIMIT = 10;
 
-function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-function writeJsonAtomic(path: string, data: unknown): void {
-  ensureDataDir();
-  const tempPath = `${path}.${Date.now()}.tmp`;
-  writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
-  try {
-    renameSync(tempPath, path);
-  } catch {
-    try {
-      if (existsSync(path)) {
-        unlinkSync(path);
-      }
-      renameSync(tempPath, path);
-    } catch (finalError) {
-      logger.error('Falha ao gravar arquivo, usando escrita direta', finalError);
-      writeFileSync(path, JSON.stringify(data, null, 2), 'utf-8');
-    }
-  }
-}
-
-function ensureDataFile(): void {
-  ensureDataDir();
-  if (!existsSync(STORAGE_PATH)) {
-    writeFileSync(STORAGE_PATH, JSON.stringify({}, null, 2), 'utf-8');
-  }
-}
-
 function readStore(): StoreShape {
-  ensureDataFile();
-  const raw = readFileSync(STORAGE_PATH, 'utf-8');
-  try {
-    return JSON.parse(raw) as StoreShape;
-  } catch (error) {
-    logger.error('Falha ao ler storage, recriando arquivo', error);
-    writeFileSync(STORAGE_PATH, JSON.stringify({}, null, 2), 'utf-8');
-    return {};
-  }
+  return readJsonFile<StoreShape>(STORAGE_PATH, {});
 }
 
 function writeStore(store: StoreShape): void {
@@ -87,18 +46,7 @@ function writeStore(store: StoreShape): void {
 }
 
 function readPlayerStore(): PlayerStore {
-  ensureDataDir();
-  if (!existsSync(PLAYERS_PATH)) {
-    writeJsonAtomic(PLAYERS_PATH, {});
-  }
-  const raw = readFileSync(PLAYERS_PATH, 'utf-8');
-  try {
-    return JSON.parse(raw) as PlayerStore;
-  } catch (error) {
-    logger.error('Falha ao ler players, recriando arquivo', error);
-    writeJsonAtomic(PLAYERS_PATH, {});
-    return {};
-  }
+  return readJsonFile<PlayerStore>(PLAYERS_PATH, {});
 }
 
 function writePlayerStore(store: PlayerStore): void {

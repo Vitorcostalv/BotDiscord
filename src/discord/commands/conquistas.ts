@@ -2,9 +2,12 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import type { AchievementDefinition, AchievementRarity } from '../../achievements/definitions.js';
 import { getUserAchievements, listAllAchievements } from '../../achievements/service.js';
+import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
+import { logError } from '../../utils/logging.js';
 import { createSuziEmbed } from '../embeds.js';
+
+const EMOJI_TROPHY = '\u{1F3C6}';
 
 const RARITY_LABELS: Record<AchievementRarity, string> = {
   comum: 'Comum',
@@ -37,7 +40,7 @@ export const conquistasCommand = {
       const unlocked = definitions.filter((definition) => unlockedMap.has(definition.id));
 
       const embed = createSuziEmbed('primary')
-        .setTitle('🏆 Conquistas do Player')
+        .setTitle(`${EMOJI_TROPHY} Conquistas do Player`)
         .setThumbnail(interaction.user.displayAvatarURL({ size: 128 }))
         .setDescription(`Total: ${unlocked.length}/${definitions.length}`);
 
@@ -65,8 +68,8 @@ export const conquistasCommand = {
 
       await safeRespond(interaction, { embeds: [embed] });
     } catch (error) {
-      logger.error('Erro no comando /conquistas', error);
-      await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
+      logError('SUZI-CMD-002', error, { message: 'Erro no comando /conquistas' });
+      await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
     }
   },
 };

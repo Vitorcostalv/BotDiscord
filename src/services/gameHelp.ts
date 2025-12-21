@@ -1,4 +1,4 @@
-import { logger } from '../utils/logger.js';
+import { logWarn } from '../utils/logging.js';
 
 import { generateAnswer } from './llm.js';
 import { getPreferences } from './storage.js';
@@ -44,7 +44,7 @@ Preferências do usuário: plataforma favorita ${prefs.plataforma ?? 'n/d'}, gê
       return llmResult;
     }
   } catch (error) {
-    logger.warn('LLM falhou, usando heurísticas', error);
+    logWarn('SUZI-CMD-002', error, { message: 'LLM falhou, usando heuristicas' });
   }
 
   return {

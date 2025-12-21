@@ -5,6 +5,9 @@ import { clearEquippedTitle, getAutoTitleForClass } from '../../services/titleSe
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { createSuziEmbed } from '../embeds.js';
 
+const EMOJI_WARNING = '\u26A0\uFE0F';
+const EMOJI_CLEAN = '\u{1F9FC}';
+
 export const titleclearCommand = {
   data: new SlashCommandBuilder().setName('titleclear').setDescription('Remove o titulo equipado'),
   async execute(interaction: ChatInputCommandInteraction) {
@@ -13,7 +16,7 @@ export const titleclearCommand = {
 
     const profile = getPlayerProfile(interaction.user.id);
     if (!profile) {
-      await safeRespond(interaction, '⚠️ Voce precisa se registrar com /register antes de remover titulos.');
+      await safeRespond(interaction, `${EMOJI_WARNING} Voce precisa se registrar com /register antes de remover titulos.`);
       return;
     }
 
@@ -21,7 +24,7 @@ export const titleclearCommand = {
     const classTitle = getAutoTitleForClass(profile.className);
 
     const embed = createSuziEmbed('primary')
-      .setTitle('🧼 Titulo removido')
+      .setTitle(`${EMOJI_CLEAN} Titulo removido`)
       .setDescription(`Agora voce voltou ao titulo da classe: ${classTitle}`);
 
     await safeRespond(interaction, { embeds: [embed] });

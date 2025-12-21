@@ -6,8 +6,9 @@ import { getHistory } from '../../services/historyService.js';
 import { getPlayerProfile } from '../../services/profileService.js';
 import { getTitleLabel, getAutoTitleForClass, getUserTitleState, unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { getUserXp } from '../../services/xpService.js';
+import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
+import { logError, logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildMissingProfileEmbed, buildProfileEmbed } from '../embeds.js';
 
 export const perfilCommand = {
@@ -66,11 +67,11 @@ export const perfilCommand = {
           await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
       } catch (error) {
-        logger.warn('Falha ao registrar conquistas do /perfil', error);
+        logWarn('SUZI-CMD-002', error, { message: 'Falha ao registrar conquistas do /perfil' });
       }
     } catch (error) {
-      logger.error('Erro no comando /perfil', error);
-      await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
+      logError('SUZI-CMD-002', error, { message: 'Erro no comando /perfil' });
+      await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
     }
   },
 };

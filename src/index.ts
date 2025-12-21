@@ -14,9 +14,17 @@ import { settitleCommand } from './discord/commands/settitle.js';
 import { sobreCommand } from './discord/commands/sobre.js';
 import { titleclearCommand } from './discord/commands/titleclear.js';
 import { safeReply } from './utils/interactions.js';
-import { logger } from './utils/logger.js';
+import { logError, logInfo } from './utils/logging.js';
 
 assertEnv();
+
+process.on('unhandledRejection', (reason) => {
+  logError('SUZI-RUNTIME-001', reason, { message: 'Unhandled rejection' });
+});
+
+process.on('uncaughtException', (error) => {
+  logError('SUZI-RUNTIME-001', error, { message: 'Uncaught exception' });
+});
 
 const commandMap = {
   ping: pingCommand,
@@ -34,7 +42,7 @@ const commandMap = {
 };
 
 discordInit().catch((error) => {
-  logger.error('Falha ao iniciar o bot', error);
+  logError('SUZI-RUNTIME-001', error, { message: 'Falha ao iniciar o bot' });
   process.exit(1);
 });
 
@@ -47,11 +55,11 @@ async function discordInit(): Promise<void> {
 
 async function startClient(client: ReturnType<typeof createClient>): Promise<void> {
   client.on('clientReady', () => {
-    logger.info(`Bot logado como ${client.user?.tag}`);
+    logInfo('SUZI-RUNTIME-001', 'Bot logado', { userTag: client.user?.tag });
   });
 
   client.on('error', (error) => {
-    logger.error('Erro no client do Discord', error);
+    logError('SUZI-DISCORD-001', error, { message: 'Erro no client do Discord' });
   });
 
   client.on('interactionCreate', async (interaction) => {
@@ -59,6 +67,10 @@ async function startClient(client: ReturnType<typeof createClient>): Promise<voi
 
     const command = commandMap[interaction.commandName as keyof typeof commandMap];
     if (!command) {
+      logError('SUZI-DISCORD-004', new Error('Comando nao registrado'), {
+        message: 'Comando nao encontrado',
+        commandName: interaction.commandName,
+      });
       await safeReply(interaction, 'Comando nao encontrado.');
       return;
     }
@@ -66,7 +78,7 @@ async function startClient(client: ReturnType<typeof createClient>): Promise<voi
     try {
       await command.execute(interaction);
     } catch (error) {
-      logger.error('Erro ao processar comando', error);
+      logError('SUZI-CMD-002', error, { message: 'Erro ao processar comando', command: interaction.commandName });
       await safeReply(interaction, 'deu ruim aqui, tenta de novo');
     }
   });

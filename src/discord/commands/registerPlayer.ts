@@ -5,9 +5,12 @@ import { appendHistory as appendProfileHistory } from '../../services/historySer
 import { getPlayerProfile, upsertPlayerProfile } from '../../services/profileService.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { awardXp } from '../../services/xpService.js';
+import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logger } from '../../utils/logger.js';
+import { logError, logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildRegisterSuccessEmbed, buildRegisterWarningEmbed } from '../embeds.js';
+
+const EMOJI_SPARKLE = '\u2728';
 
 export const registerPlayerCommand = {
   data: new SlashCommandBuilder()
@@ -57,7 +60,7 @@ export const registerPlayerCommand = {
 
       const xpResult = awardXp(userId, 10, { reason: 'register' });
       if (xpResult.leveledUp) {
-        await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+        await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
       }
 
       try {
@@ -68,11 +71,11 @@ export const registerPlayerCommand = {
           await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
       } catch (error) {
-        logger.warn('Falha ao registrar conquistas do /register', error);
+        logWarn('SUZI-CMD-002', error, { message: 'Falha ao registrar conquistas do /register' });
       }
     } catch (error) {
-      logger.error('Erro no comando /register', error);
-      await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
+      logError('SUZI-CMD-002', error, { message: 'Erro no comando /register' });
+      await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
     }
   },
 };
