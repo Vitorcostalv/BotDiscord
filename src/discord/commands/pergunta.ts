@@ -18,10 +18,12 @@ function isInteractionError(error: unknown, code: number): boolean {
   return typeof (error as { code?: number }).code === 'number' && (error as { code?: number }).code === code;
 }
 
-async function safeDeferReply(interaction: ChatInputCommandInteraction): Promise<boolean> {
+async function safeDeferReply(interaction: ChatInputCommandInteraction, ephemeral = false): Promise<boolean> {
   if (interaction.deferred || interaction.replied) return true;
   try {
-    await interaction.deferReply();
+    logger.info('Ack /pergunta: iniciando defer');
+    await interaction.deferReply({ ephemeral });
+    logger.info('Ack /pergunta: defer ok');
     return true;
   } catch (error) {
     if (isInteractionError(error, 10062)) {
@@ -31,8 +33,8 @@ async function safeDeferReply(interaction: ChatInputCommandInteraction): Promise
     if (isInteractionError(error, 40060)) {
       return true;
     }
-    logger.warn('Falha ao deferir /pergunta', error);
-    return true;
+    logger.error('Falha ao deferir /pergunta', error);
+    throw error;
   }
 }
 
@@ -60,7 +62,7 @@ export const perguntaCommand = {
     .setDescription('Faca uma pergunta sobre jogos e receba ajuda')
     .addStringOption((option) => option.setName('pergunta').setDescription('Sua pergunta').setRequired(true)),
   async execute(interaction: ChatInputCommandInteraction) {
-    const canReply = await safeDeferReply(interaction);
+    const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
       return;
     }

@@ -41,6 +41,10 @@ async function startClient(client: ReturnType<typeof createClient>): Promise<voi
     logger.info(`Bot logado como ${client.user?.tag}`);
   });
 
+  client.on('error', (error) => {
+    logger.error('Erro no client do Discord', error);
+  });
+
   client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
