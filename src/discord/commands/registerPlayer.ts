@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
+import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
 import { buildRegisterSuccessEmbed, buildRegisterWarningEmbed } from '../embeds.js';
 import { getPlayer, upsertPlayer } from '../../services/storage.js';
 import { logger } from '../../utils/logger.js';
@@ -43,6 +44,16 @@ export const registerPlayerCommand = {
       const profile = upsertPlayer(userId, { playerName, characterName, className, level });
       const embed = buildRegisterSuccessEmbed(interaction.user, profile);
       await interaction.editReply({ embeds: [embed] });
+
+      try {
+        const { unlocked } = trackEvent(userId, 'register');
+        const message = buildUnlockMessage(unlocked);
+        if (message) {
+          await interaction.followUp(message);
+        }
+      } catch (error) {
+        logger.warn('Falha ao registrar conquistas do /register', error);
+      }
     } catch (error) {
       logger.error('Erro no comando /register', error);
       if (interaction.deferred || interaction.replied) {

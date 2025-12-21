@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
+import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
 import { generateGeminiAnswer } from '../../services/gemini.js';
 import { getPlayer, getPreferences } from '../../services/storage.js';
 import { logger } from '../../utils/logger.js';
@@ -38,6 +39,16 @@ export const jogoCommand = {
         await interaction.deferReply();
         const response = await generateGeminiAnswer({ question, userProfile });
         await interaction.editReply(withLeadingEmoji(response, '🎮'));
+
+        try {
+          const { unlocked } = trackEvent(userId, 'jogo');
+          const message = buildUnlockMessage(unlocked);
+          if (message) {
+            await interaction.followUp(message);
+          }
+        } catch (error) {
+          logger.warn('Falha ao registrar conquistas do /jogo', error);
+        }
       } catch (error) {
         logger.error('Erro no comando /jogo', error);
         await interaction.editReply('⚠️ deu ruim aqui, tenta de novo');

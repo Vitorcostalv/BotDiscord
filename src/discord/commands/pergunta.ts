@@ -40,8 +40,8 @@ export const perguntaCommand = {
         const embed = new EmbedBuilder()
           .setTitle('🧠 Pergunta & Resposta')
           .addFields(
-            { name: '❓ Pergunta', value: safeText(question, 1024) },
-            { name: '✅ Resposta', value: safeText(response, 1024) },
+            { name: ' Pergunta: ', value: safeText(question, 1024) },
+            { name: ' Resposta: ', value: safeText(response, 1024) },
           );
 
         await interaction.editReply({ embeds: [embed] });

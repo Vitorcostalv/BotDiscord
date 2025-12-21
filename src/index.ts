@@ -1,5 +1,6 @@
 import { assertEnv, env } from './config/env.js';
 import { ajudaCommand } from './discord/commands/ajuda.js';
+import { conquistasCommand } from './discord/commands/conquistas.js';
 import { jogoCommand } from './discord/commands/jogo.js';
 import { perfilCommand } from './discord/commands/perfil.js';
 import { perguntaCommand } from './discord/commands/pergunta.js';
@@ -20,6 +21,7 @@ const commandMap = {
   ajuda: ajudaCommand,
   roll: rollCommand,
   register: registerPlayerCommand,
+  conquistas: conquistasCommand,
 };
 
 discordInit().catch((error) => {

@@ -1,10 +1,22 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
+import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
 import { parseDice, rollDice } from '../../services/dice.js';
 import { logger } from '../../utils/logger.js';
 import { withCooldown } from '../cooldown.js';
 
-const MAX_ROLLS_DISPLAY = 100;
+const MAX_ROLLS_DISPLAY = 30;
+
+type RollMessageResult =
+  | {
+      ok: true;
+      message: string;
+      rolls: number[];
+      sides: number;
+      count: number;
+      total: number;
+    }
+  | { ok: false; message: string };
 
 function formatRollMessage(expression: string, rolls: number[], total: number): string {
   const orderedRolls = [...rolls].sort((a, b) => a - b);
@@ -19,7 +31,7 @@ function formatRollMessage(expression: string, rolls: number[], total: number): 
   return `🎲 Rolagem: ${expression}\nResultados (ordenados): ${results}\nTotal: ${total}`;
 }
 
-export function buildRollMessage(input: string): { ok: true; message: string } | { ok: false; message: string } {
+export function buildRollMessage(input: string): RollMessageResult {
   const parsed = parseDice(input);
   if ('error' in parsed) {
     return { ok: false, message: parsed.error };
@@ -27,7 +39,14 @@ export function buildRollMessage(input: string): { ok: true; message: string } |
 
   const { rolls, total } = rollDice(parsed.count, parsed.sides);
   const expression = `${parsed.count}d${parsed.sides}`;
-  return { ok: true, message: formatRollMessage(expression, rolls, total) };
+  return {
+    ok: true,
+    message: formatRollMessage(expression, rolls, total),
+    rolls,
+    sides: parsed.sides,
+    count: parsed.count,
+    total,
+  };
 }
 
 export const rollCommand = {
@@ -49,6 +68,19 @@ export const rollCommand = {
       }
 
       await interaction.reply(result.message);
+
+      try {
+        const { unlocked } = trackEvent(interaction.user.id, 'roll', {
+          sides: result.sides,
+          rolls: result.rolls,
+        });
+        const message = buildUnlockMessage(unlocked);
+        if (message) {
+          await interaction.followUp(message);
+        }
+      } catch (error) {
+        logger.warn('Falha ao registrar conquistas do /roll', error);
+      }
     });
   },
 };

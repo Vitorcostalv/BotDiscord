@@ -2,6 +2,7 @@ import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 
 import { env } from '../../config/env.js';
 import { ajudaCommand } from './ajuda.js';
+import { conquistasCommand } from './conquistas.js';
 import { jogoCommand } from './jogo.js';
 import { perfilCommand } from './perfil.js';
 import { perguntaCommand } from './pergunta.js';
@@ -17,6 +18,7 @@ const commands = [
   ajudaCommand.data,
   rollCommand.data,
   registerPlayerCommand.data,
+  conquistasCommand.data,
 ];
 
 export async function registerCommands(): Promise<void> {

@@ -1,5 +1,6 @@
 import { EmbedBuilder, type User } from 'discord.js';
 
+import type { AchievementDefinition } from '../achievements/definitions.js';
 import type { PlayerProfile } from '../services/storage.js';
 
 const COLORS = {
@@ -23,6 +24,11 @@ const CLASS_EMOJI: Record<string, string> = {
   mago: '🧙',
   arqueiro: '🏹',
   tank: '🛡️',
+};
+
+type AchievementSummary = {
+  recent: AchievementDefinition[];
+  total: number;
 };
 
 function safeText(text: string, maxLen: number): string {
@@ -55,6 +61,12 @@ function buildProgressBar(level: number): string {
   return `${'▰'.repeat(filled)}${'▱'.repeat(total - filled)}`;
 }
 
+function formatAchievements(summary: AchievementSummary): string {
+  const recent = summary.recent.slice(0, 6);
+  const list = recent.length ? recent.map((item) => `${item.emoji} ${item.name}`).join('\n') : 'Nenhuma ainda.';
+  return safeText(`${list}\nTotal: ${summary.total}`, 1024);
+}
+
 export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle(`${EMOJI.game} GameBuddy — Central de Comandos`)
@@ -75,17 +87,15 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
       },
       {
         name: `${EMOJI.dice} RPG`,
-        value: safeText(
-          '/roll expressao:<NdM>\n- Rolagem de dados (ex: 2d20, 1d100)',
-          1024,
-        ),
+        value: safeText('/roll expressao:<NdM>\n- Rolagem de dados (ex: 2d20, 1d100)', 1024),
       },
       {
         name: `${EMOJI.profile} Perfil do Player`,
         value: safeText(
           '/register\n- Registra seu jogador\n' +
             '/perfil\n- Mostra seu perfil\n' +
-            '/nivel\n- Atualiza o nivel do personagem',
+            '/nivel\n- Atualiza o nivel do personagem\n' +
+            '/conquistas\n- Lista suas conquistas',
           1024,
         ),
       },
@@ -131,11 +141,15 @@ export function buildRegisterWarningEmbed(user?: User | null): EmbedBuilder {
   return embed;
 }
 
-export function buildProfileEmbed(user: User, player: PlayerProfile): EmbedBuilder {
+export function buildProfileEmbed(
+  user: User,
+  player: PlayerProfile,
+  achievements?: AchievementSummary,
+): EmbedBuilder {
   const classEmoji = getClassEmoji(player.className);
   const progress = buildProgressBar(player.level);
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`${EMOJI.profile} Perfil do Player`)
     .setDescription(`Jogador: ${safeText(player.playerName, 1024)}`)
     .setThumbnail(user.displayAvatarURL({ size: 128 }))
@@ -150,6 +164,15 @@ export function buildProfileEmbed(user: User, player: PlayerProfile): EmbedBuild
       },
     )
     .setFooter({ text: 'GameBuddy • Perfil do Player' });
+
+  if (achievements) {
+    embed.addFields({
+      name: '🏆 Conquistas',
+      value: formatAchievements(achievements),
+    });
+  }
+
+  return embed;
 }
 
 export function buildMissingProfileEmbed(user?: User | null): EmbedBuilder {
