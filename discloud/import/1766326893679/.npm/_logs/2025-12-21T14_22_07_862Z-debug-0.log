@@ -1,0 +1,23 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@10.9.2
+2 info using node@v22.17.1
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/home/node/.npmrc
+5 silly config load:file:/home/node/.npm-global/etc/npmrc
+6 verbose title npm start
+7 verbose argv "start"
+8 verbose logfile logs-max:10 dir:/home/node/.npm/_logs/2025-12-21T14_22_07_862Z-
+9 verbose logfile /home/node/.npm/_logs/2025-12-21T14_22_07_862Z-debug-0.log
+10 silly logfile done cleaning log files
+11 http fetch GET 200 https://registry.npmjs.org/npm 710ms
+12 verbose cwd /home/node
+13 verbose os Linux 5.15.0-163-generic
+14 verbose node v22.17.1
+15 verbose npm  v10.9.2
+16 notice
+16 notice New [31mmajor[39m version of npm available! [31m10.9.2[39m -> [34m11.7.0[39m
+16 notice Changelog: [34mhttps://github.com/npm/cli/releases/tag/v11.7.0[39m
+16 notice To update run: [4mnpm install -g npm@11.7.0[24m
+16 notice  { force: true, [Symbol(proc-log.meta)]: true }
+17 verbose exit 1
+18 verbose code 1
