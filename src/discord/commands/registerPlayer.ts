@@ -3,6 +3,7 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
 import { buildRegisterSuccessEmbed, buildRegisterWarningEmbed } from '../embeds.js';
 import { getPlayer, upsertPlayer } from '../../services/storage.js';
+import { safeDeferReply, safeReply } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
 
 export const registerPlayerCommand = {
@@ -25,14 +26,18 @@ export const registerPlayerCommand = {
         .setMaxValue(99),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
+    const canReply = await safeDeferReply(interaction, false);
+    if (!canReply) {
+      return;
+    }
+
     try {
-      await interaction.deferReply();
       const userId = interaction.user.id;
       const existing = getPlayer(userId);
 
       if (existing) {
         const embed = buildRegisterWarningEmbed(interaction.user);
-        await interaction.editReply({ embeds: [embed] });
+        await safeReply(interaction, { embeds: [embed] });
         return;
       }
 
@@ -43,24 +48,20 @@ export const registerPlayerCommand = {
 
       const profile = upsertPlayer(userId, { playerName, characterName, className, level });
       const embed = buildRegisterSuccessEmbed(interaction.user, profile);
-      await interaction.editReply({ embeds: [embed] });
+      await safeReply(interaction, { embeds: [embed] });
 
       try {
         const { unlocked } = trackEvent(userId, 'register');
         const message = buildUnlockMessage(unlocked);
         if (message) {
-          await interaction.followUp(message);
+          await safeReply(interaction, message);
         }
       } catch (error) {
         logger.warn('Falha ao registrar conquistas do /register', error);
       }
     } catch (error) {
       logger.error('Erro no comando /register', error);
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply('⚠️ deu ruim aqui, tenta de novo');
-      } else {
-        await interaction.reply('⚠️ deu ruim aqui, tenta de novo');
-      }
+      await safeReply(interaction, '⚠️ deu ruim aqui, tenta de novo');
     }
   },
 };

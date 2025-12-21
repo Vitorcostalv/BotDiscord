@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from '
 
 import type { AchievementDefinition, AchievementRarity } from '../../achievements/definitions.js';
 import { getUserAchievements, listAllAchievements } from '../../achievements/service.js';
+import { safeDeferReply, safeReply } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
 
 const RARITY_LABELS: Record<AchievementRarity, string> = {
@@ -23,9 +24,12 @@ function safeText(text: string, maxLen: number): string {
 export const conquistasCommand = {
   data: new SlashCommandBuilder().setName('conquistas').setDescription('Lista suas conquistas'),
   async execute(interaction: ChatInputCommandInteraction) {
-    try {
-      await interaction.deferReply();
+    const canReply = await safeDeferReply(interaction, false);
+    if (!canReply) {
+      return;
+    }
 
+    try {
       const { unlockedList } = getUserAchievements(interaction.user.id);
       const definitions = listAllAchievements();
       const unlockedMap = new Map(unlockedList.map((entry) => [entry.id, entry.unlockedAt]));
@@ -59,14 +63,10 @@ export const conquistasCommand = {
         }
       }
 
-      await interaction.editReply({ embeds: [embed] });
+      await safeReply(interaction, { embeds: [embed] });
     } catch (error) {
       logger.error('Erro no comando /conquistas', error);
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply('⚠️ deu ruim aqui, tenta de novo');
-      } else {
-        await interaction.reply('⚠️ deu ruim aqui, tenta de novo');
-      }
+      await safeReply(interaction, '⚠️ deu ruim aqui, tenta de novo');
     }
   },
 };

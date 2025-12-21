@@ -3,6 +3,7 @@ import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from '
 import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
 import { generateGeminiAnswer } from '../../services/gemini.js';
 import { appendHistory, getHistory, getPlayer } from '../../services/storage.js';
+import { safeDeferReply, safeReply } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
 import { withCooldown } from '../cooldown.js';
 
@@ -14,48 +15,6 @@ function safeText(text: string, maxLen: number): string {
   return `${normalized.slice(0, sliceEnd).trimEnd()}...`;
 }
 
-function isInteractionError(error: unknown, code: number): boolean {
-  return typeof (error as { code?: number }).code === 'number' && (error as { code?: number }).code === code;
-}
-
-async function safeDeferReply(interaction: ChatInputCommandInteraction, ephemeral = false): Promise<boolean> {
-  if (interaction.deferred || interaction.replied) return true;
-  try {
-    logger.info('Ack /pergunta: iniciando defer');
-    await interaction.deferReply({ ephemeral });
-    logger.info('Ack /pergunta: defer ok');
-    return true;
-  } catch (error) {
-    if (isInteractionError(error, 10062)) {
-      logger.warn('Interacao expirada em /pergunta', error);
-      return false;
-    }
-    if (isInteractionError(error, 40060)) {
-      return true;
-    }
-    logger.error('Falha ao deferir /pergunta', error);
-    throw error;
-  }
-}
-
-async function safeRespond(
-  interaction: ChatInputCommandInteraction,
-  payload: { embeds: EmbedBuilder[] } | string,
-): Promise<void> {
-  try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply(payload);
-    } else {
-      await interaction.reply(payload);
-    }
-  } catch (error) {
-    if (isInteractionError(error, 10062) || isInteractionError(error, 40060)) {
-      return;
-    }
-    logger.warn('Falha ao responder /pergunta', error);
-  }
-}
-
 export const perguntaCommand = {
   data: new SlashCommandBuilder()
     .setName('pergunta')
@@ -64,8 +23,10 @@ export const perguntaCommand = {
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
+      logger.warn('Ack /pergunta: interacao expirada antes do defer');
       return;
     }
+    logger.info('Ack /pergunta: defer ok');
 
     await withCooldown(interaction, 'pergunta', async () => {
       const userId = interaction.user.id;
@@ -91,20 +52,20 @@ export const perguntaCommand = {
             { name: '✅ Resposta', value: safeText(response, 1024) },
           );
 
-        await safeRespond(interaction, { embeds: [embed] });
+        await safeReply(interaction, { embeds: [embed] });
 
         try {
           const { unlocked } = trackEvent(userId, 'pergunta');
           const message = buildUnlockMessage(unlocked);
-          if (message && (interaction.deferred || interaction.replied)) {
-            await interaction.followUp(message);
+          if (message) {
+            await safeReply(interaction, message);
           }
         } catch (error) {
           logger.warn('Falha ao registrar conquistas do /pergunta', error);
         }
       } catch (error) {
         logger.error('Erro no comando /pergunta', error);
-        await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
+        await safeReply(interaction, '⚠️ deu ruim aqui, tenta de novo');
       }
     });
   },

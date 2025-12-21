@@ -9,6 +9,7 @@ import { registerPlayerCommand } from './discord/commands/registerPlayer.js';
 import { rollCommand } from './discord/commands/roll.js';
 import { registerCommands } from './discord/commands/register.js';
 import { createClient } from './discord/client.js';
+import { safeReply } from './utils/interactions.js';
 import { logger } from './utils/logger.js';
 
 assertEnv();
@@ -50,7 +51,7 @@ async function startClient(client: ReturnType<typeof createClient>): Promise<voi
 
     const command = commandMap[interaction.commandName as keyof typeof commandMap];
     if (!command) {
-      await interaction.reply('Comando nao encontrado.');
+      await safeReply(interaction, 'Comando nao encontrado.');
       return;
     }
 
@@ -58,15 +59,7 @@ async function startClient(client: ReturnType<typeof createClient>): Promise<voi
       await command.execute(interaction);
     } catch (error) {
       logger.error('Erro ao processar comando', error);
-      try {
-        if (interaction.replied || interaction.deferred) {
-          await interaction.editReply('deu ruim aqui, tenta de novo');
-        } else {
-          await interaction.reply('deu ruim aqui, tenta de novo');
-        }
-      } catch (replyError) {
-        logger.warn('Falha ao responder erro do comando', replyError);
-      }
+      await safeReply(interaction, 'deu ruim aqui, tenta de novo');
     }
   });
 

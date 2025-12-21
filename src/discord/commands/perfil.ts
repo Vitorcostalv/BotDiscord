@@ -4,17 +4,22 @@ import type { AchievementDefinition } from '../../achievements/definitions.js';
 import { getUserAchievements, listAllAchievements } from '../../achievements/service.js';
 import { buildMissingProfileEmbed, buildProfileEmbed } from '../embeds.js';
 import { getPlayer } from '../../services/storage.js';
+import { safeDeferReply, safeReply } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
 
 export const perfilCommand = {
   data: new SlashCommandBuilder().setName('perfil').setDescription('Mostra o perfil do player'),
   async execute(interaction: ChatInputCommandInteraction) {
+    const canReply = await safeDeferReply(interaction, false);
+    if (!canReply) {
+      return;
+    }
+
     try {
-      await interaction.deferReply();
       const profile = getPlayer(interaction.user.id);
       if (!profile) {
         const embed = buildMissingProfileEmbed(interaction.user);
-        await interaction.editReply({ embeds: [embed] });
+        await safeReply(interaction, { embeds: [embed] });
         return;
       }
 
@@ -34,14 +39,10 @@ export const perfilCommand = {
         total: unlockedList.length,
       });
 
-      await interaction.editReply({ embeds: [embed] });
+      await safeReply(interaction, { embeds: [embed] });
     } catch (error) {
       logger.error('Erro no comando /perfil', error);
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply('⚠️ deu ruim aqui, tenta de novo');
-      } else {
-        await interaction.reply('⚠️ deu ruim aqui, tenta de novo');
-      }
+      await safeReply(interaction, '⚠️ deu ruim aqui, tenta de novo');
     }
   },
 };

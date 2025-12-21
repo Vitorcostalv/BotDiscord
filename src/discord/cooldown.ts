@@ -1,5 +1,7 @@
 import { ChatInputCommandInteraction } from 'discord.js';
 
+import { safeReply } from '../utils/interactions.js';
+
 const cooldowns = new Map<string, number>();
 const WINDOW_MS = 5000;
 
@@ -19,11 +21,7 @@ export async function withCooldown(
   if (expiresAt && now < expiresAt) {
     const waitSeconds = Math.ceil((expiresAt - now) / 1000);
     const content = `Segura ai, aguarde ${waitSeconds}s para usar novamente.`;
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply(content);
-    } else {
-      await interaction.reply({ content, ephemeral: true });
-    }
+    await safeReply(interaction, content, true);
     return;
   }
 

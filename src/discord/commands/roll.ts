@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
 import { parseDice, rollDice } from '../../services/dice.js';
+import { safeReply } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
 import { withCooldown } from '../cooldown.js';
 
@@ -63,11 +64,11 @@ export const rollCommand = {
 
       if (!result.ok) {
         logger.warn('Entrada invalida no /roll', { input });
-        await interaction.reply(result.message);
+        await safeReply(interaction, result.message);
         return;
       }
 
-      await interaction.reply(result.message);
+      await safeReply(interaction, result.message);
 
       try {
         const { unlocked } = trackEvent(interaction.user.id, 'roll', {
@@ -76,7 +77,7 @@ export const rollCommand = {
         });
         const message = buildUnlockMessage(unlocked);
         if (message) {
-          await interaction.followUp(message);
+          await safeReply(interaction, message);
         }
       } catch (error) {
         logger.warn('Falha ao registrar conquistas do /roll', error);

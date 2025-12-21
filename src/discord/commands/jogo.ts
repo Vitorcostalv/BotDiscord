@@ -3,6 +3,7 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
 import { generateGeminiAnswer } from '../../services/gemini.js';
 import { getPlayer, getPreferences } from '../../services/storage.js';
+import { safeDeferReply, safeReply } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
 import { withCooldown } from '../cooldown.js';
 
@@ -21,6 +22,11 @@ export const jogoCommand = {
       option.setName('plataforma').setDescription('Plataforma (ex: PC, PS5, Switch)').setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
+    const canReply = await safeDeferReply(interaction, false);
+    if (!canReply) {
+      return;
+    }
+
     await withCooldown(interaction, 'jogo', async () => {
       const userId = interaction.user.id;
       const gameName = interaction.options.getString('nome', true);
@@ -36,22 +42,21 @@ export const jogoCommand = {
       ].join(' ');
 
       try {
-        await interaction.deferReply();
         const response = await generateGeminiAnswer({ question, userProfile });
-        await interaction.editReply(withLeadingEmoji(response, '🎮'));
+        await safeReply(interaction, withLeadingEmoji(response, '🎮'));
 
         try {
           const { unlocked } = trackEvent(userId, 'jogo');
           const message = buildUnlockMessage(unlocked);
           if (message) {
-            await interaction.followUp(message);
+            await safeReply(interaction, message);
           }
         } catch (error) {
           logger.warn('Falha ao registrar conquistas do /jogo', error);
         }
       } catch (error) {
         logger.error('Erro no comando /jogo', error);
-        await interaction.editReply('⚠️ deu ruim aqui, tenta de novo');
+        await safeReply(interaction, '⚠️ deu ruim aqui, tenta de novo');
       }
     });
   },
