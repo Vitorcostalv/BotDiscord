@@ -4,32 +4,35 @@ import { trackEvent } from '../../achievements/service.js';
 import { parseDice, rollDice } from '../../services/dice.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro } from '../../services/profileService.js';
+import { addRoll } from '../../services/rollHistoryService.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { awardXp } from '../../services/xpService.js';
 import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logWarn } from '../../utils/logging.js';
 import { withCooldown } from '../cooldown.js';
-import { buildAchievementUnlockEmbed } from '../embeds.js';
+import { buildAchievementUnlockEmbed, createSuziEmbed } from '../embeds.js';
 
 const EMOJI_DICE = '\u{1F3B2}';
 const EMOJI_SPARKLE = '\u2728';
 const MAX_ROLLS_DISPLAY = 30;
 const HISTORY_ROLLS_DISPLAY = 8;
+const ORDER_LABEL = 'Maior -> menor';
 
 type RollMessageResult =
   | {
       ok: true;
-      message: string;
+      resultsText: string;
       rolls: number[];
       sides: number;
       count: number;
       total: number;
+      expression: string;
     }
   | { ok: false; message: string };
 
-function formatRollMessage(expression: string, rolls: number[], total: number): string {
-  const orderedRolls = [...rolls].sort((a, b) => a - b);
+function formatRollResults(rolls: number[]): string {
+  const orderedRolls = [...rolls].sort((a, b) => b - a);
   const shownRolls = orderedRolls.slice(0, MAX_ROLLS_DISPLAY);
   let results = shownRolls.join(', ');
 
@@ -38,7 +41,7 @@ function formatRollMessage(expression: string, rolls: number[], total: number): 
     results = `${results}, ... +${remaining} resultados`;
   }
 
-  return `${EMOJI_DICE} Rolagem: ${expression}\nResultados (ordenados): ${results}\nTotal: ${total}`;
+  return results;
 }
 
 function formatHistoryRoll(expression: string, rolls: number[], total: number): string {
@@ -60,11 +63,12 @@ export function buildRollMessage(input: string): RollMessageResult {
   const expression = `${parsed.count}d${parsed.sides}`;
   return {
     ok: true,
-    message: formatRollMessage(expression, rolls, total),
+    resultsText: formatRollResults(rolls),
     rolls,
     sides: parsed.sides,
     count: parsed.count,
     total,
+    expression,
   };
 }
 
@@ -90,7 +94,10 @@ export const rollCommand = {
           message: 'Entrada invalida no /roll',
           input,
         });
-        await safeRespond(interaction, toPublicMessage('SUZI-ROLL-001'));
+        const errorEmbed = createSuziEmbed('warning')
+          .setTitle('Rolagem invalida')
+          .setDescription(toPublicMessage('SUZI-ROLL-001'));
+        await safeRespond(interaction, { embeds: [errorEmbed] });
         return;
       }
 
@@ -104,8 +111,33 @@ export const rollCommand = {
         kind: 'roll',
       });
 
-      const content = intro ? `${intro}\n\n${result.message}` : result.message;
-      await safeRespond(interaction, content);
+      const embed = createSuziEmbed('primary')
+        .setTitle(`${EMOJI_DICE} Rolagem de Dados`)
+        .addFields(
+          { name: 'Expressao', value: result.expression, inline: true },
+          { name: 'Total', value: String(result.total), inline: true },
+          { name: 'Ordem de exibicao', value: ORDER_LABEL, inline: true },
+          { name: `Resultados (${ORDER_LABEL})`, value: result.resultsText },
+        );
+      if (intro) {
+        embed.setDescription(intro);
+      }
+
+      await safeRespond(interaction, { embeds: [embed] });
+
+      try {
+        const min = Math.min(...result.rolls);
+        const max = Math.max(...result.rolls);
+        addRoll(interaction.user.id, {
+          expr: result.expression,
+          total: result.total,
+          min,
+          max,
+          guildId: interaction.guildId ?? undefined,
+        });
+      } catch (error) {
+        logWarn('SUZI-STORE-002', error, { message: 'Falha ao salvar rollHistory', userId: interaction.user.id });
+      }
 
       const xpResult = awardXp(interaction.user.id, 2, { reason: 'roll', cooldownSeconds: 5 });
       if (xpResult.leveledUp) {

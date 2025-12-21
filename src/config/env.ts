@@ -13,6 +13,7 @@ export const env = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? '',
   geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
   allowAdminEdit: process.env.ALLOW_ADMIN_EDIT === 'true',
+  roleMasterId: process.env.ROLE_MASTER_ID ?? '',
 };
 
 export function assertEnv(): void {

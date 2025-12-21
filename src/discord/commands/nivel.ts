@@ -63,7 +63,7 @@ export const nivelCommand = {
         return;
       }
 
-      const updated = updatePlayerLevel(target.id, level);
+      const updated = updatePlayerLevel(target.id, level, interaction.user.id);
       if (!updated) {
         await safeRespond(interaction, `${EMOJI_WARNING} Nao consegui atualizar o nivel agora.`);
         return;

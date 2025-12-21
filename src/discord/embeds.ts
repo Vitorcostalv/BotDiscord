@@ -146,6 +146,14 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
         value: safeText('/roll expressao:<NdM>\n- Rolagem de dados (ex: 2d20, 1d100)', 1024),
       },
       {
+        name: 'Historico & Estatisticas',
+        value: safeText(
+          '/historico user:<opcional> limite:<1..10>\n- Ultimas rolagens do usuario\n' +
+            '/stats\n- Resumo de rolagens do servidor',
+          1024,
+        ),
+      },
+      {
         name: `${EMOJI.profile} Perfil do Player`,
         value: safeText(
           '/register\n- Registra seu jogador\n' +
@@ -186,8 +194,8 @@ export function buildRegisterSuccessEmbed(user: User, player: PlayerProfile): Em
 
 export function buildRegisterWarningEmbed(user?: User | null): EmbedBuilder {
   const embed = createSuziEmbed('warning')
-    .setTitle(`${EMOJI.warning} Voce ja possui um personagem registrado`)
-    .setDescription('Use /perfil para ver seus dados ou /nivel para evoluir seu personagem.')
+    .setTitle(`${EMOJI.warning} Registro ja existente`)
+    .setDescription('Use /register force:true para sobrescrever ou /perfil para ver os dados.')
     .setFooter({ text: 'Suzi - Registro de Player' });
 
   if (user) {

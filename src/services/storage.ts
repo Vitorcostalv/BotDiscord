@@ -26,7 +26,9 @@ export type PlayerProfile = {
   characterName: string;
   className: string;
   level: number;
+  createdBy: string;
   createdAt: number;
+  updatedBy: string;
   updatedAt: number;
 };
 
@@ -102,12 +104,16 @@ export function upsertPlayer(userId: string, data: PlayerInput): PlayerProfile {
   const now = Date.now();
   const existing = store[userId];
   const createdAt = existing?.createdAt ?? now;
+  const createdBy = existing?.createdBy ?? userId;
+  const updatedBy = userId;
   const profile: PlayerProfile = {
     playerName: data.playerName,
     characterName: data.characterName,
     className: data.className,
     level: data.level,
+    createdBy,
     createdAt,
+    updatedBy,
     updatedAt: now,
   };
   store[userId] = profile;
@@ -121,7 +127,12 @@ export function updatePlayerLevel(userId: string, level: number): PlayerProfile 
   if (!existing) {
     return null;
   }
-  const updated: PlayerProfile = { ...existing, level, updatedAt: Date.now() };
+  const updated: PlayerProfile = {
+    ...existing,
+    level,
+    updatedAt: Date.now(),
+    updatedBy: existing.updatedBy ?? userId,
+  };
   store[userId] = updated;
   writePlayerStore(store);
   return updated;

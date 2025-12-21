@@ -4,6 +4,7 @@ import { env } from '../../config/env.js';
 
 import { ajudaCommand } from './ajuda.js';
 import { conquistasCommand } from './conquistas.js';
+import { historicoCommand } from './historico.js';
 import { jogoCommand } from './jogo.js';
 import { nivelCommand } from './nivel.js';
 import { perfilCommand } from './perfil.js';
@@ -13,6 +14,7 @@ import { registerPlayerCommand } from './registerPlayer.js';
 import { rollCommand } from './roll.js';
 import { settitleCommand } from './settitle.js';
 import { sobreCommand } from './sobre.js';
+import { statsCommand } from './stats.js';
 import { titleclearCommand } from './titleclear.js';
 
 const commands = [
@@ -22,6 +24,8 @@ const commands = [
   perfilCommand.data,
   ajudaCommand.data,
   rollCommand.data,
+  historicoCommand.data,
+  statsCommand.data,
   registerPlayerCommand.data,
   conquistasCommand.data,
   nivelCommand.data,

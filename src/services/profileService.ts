@@ -9,7 +9,9 @@ export type PlayerProfile = {
   characterName: string;
   className: string;
   level: number;
+  createdBy: string;
   createdAt: number;
+  updatedBy: string;
   updatedAt: number;
 };
 
@@ -76,17 +78,21 @@ export function getPlayerProfile(userId: string): PlayerProfile | null {
   return store[userId] ?? null;
 }
 
-export function upsertPlayerProfile(userId: string, data: PlayerInput): PlayerProfile {
+export function upsertPlayerProfile(userId: string, data: PlayerInput, actorId?: string): PlayerProfile {
   const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
   const now = Date.now();
   const existing = store[userId];
   const createdAt = existing?.createdAt ?? now;
+  const createdBy = existing?.createdBy ?? actorId ?? userId;
+  const updatedBy = actorId ?? userId;
   const profile: PlayerProfile = {
     playerName: data.playerName,
     characterName: data.characterName,
     className: data.className,
     level: data.level,
+    createdBy,
     createdAt,
+    updatedBy,
     updatedAt: now,
   };
   store[userId] = profile;
@@ -94,13 +100,18 @@ export function upsertPlayerProfile(userId: string, data: PlayerInput): PlayerPr
   return profile;
 }
 
-export function updatePlayerLevel(userId: string, level: number): PlayerProfile | null {
+export function updatePlayerLevel(userId: string, level: number, actorId?: string): PlayerProfile | null {
   const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
   const existing = store[userId];
   if (!existing) {
     return null;
   }
-  const updated: PlayerProfile = { ...existing, level, updatedAt: Date.now() };
+  const updated: PlayerProfile = {
+    ...existing,
+    level,
+    updatedAt: Date.now(),
+    updatedBy: actorId ?? existing.updatedBy ?? userId,
+  };
   store[userId] = updated;
   writeJsonAtomic(PLAYERS_PATH, store);
   return updated;

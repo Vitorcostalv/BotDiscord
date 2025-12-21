@@ -2,6 +2,7 @@ import { assertEnv, env } from './config/env.js';
 import { createClient } from './discord/client.js';
 import { ajudaCommand } from './discord/commands/ajuda.js';
 import { conquistasCommand } from './discord/commands/conquistas.js';
+import { historicoCommand } from './discord/commands/historico.js';
 import { jogoCommand } from './discord/commands/jogo.js';
 import { nivelCommand } from './discord/commands/nivel.js';
 import { perfilCommand } from './discord/commands/perfil.js';
@@ -12,6 +13,7 @@ import { registerPlayerCommand } from './discord/commands/registerPlayer.js';
 import { rollCommand } from './discord/commands/roll.js';
 import { settitleCommand } from './discord/commands/settitle.js';
 import { sobreCommand } from './discord/commands/sobre.js';
+import { statsCommand } from './discord/commands/stats.js';
 import { titleclearCommand } from './discord/commands/titleclear.js';
 import { safeReply } from './utils/interactions.js';
 import { logError, logInfo } from './utils/logging.js';
@@ -33,6 +35,8 @@ const commandMap = {
   perfil: perfilCommand,
   ajuda: ajudaCommand,
   roll: rollCommand,
+  historico: historicoCommand,
+  stats: statsCommand,
   register: registerPlayerCommand,
   conquistas: conquistasCommand,
   nivel: nivelCommand,
