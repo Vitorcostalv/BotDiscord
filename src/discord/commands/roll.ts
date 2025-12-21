@@ -1,12 +1,18 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
-import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
+import { trackEvent } from '../../achievements/service.js';
+import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
+import { formatSuziIntro } from '../../services/profileService.js';
 import { parseDice, rollDice } from '../../services/dice.js';
-import { safeReply } from '../../utils/interactions.js';
+import { unlockTitlesFromAchievements } from '../../services/titleService.js';
+import { awardXp } from '../../services/xpService.js';
+import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
+import { buildAchievementUnlockEmbed } from '../embeds.js';
 import { withCooldown } from '../cooldown.js';
 
 const MAX_ROLLS_DISPLAY = 30;
+const HISTORY_ROLLS_DISPLAY = 8;
 
 type RollMessageResult =
   | {
@@ -30,6 +36,15 @@ function formatRollMessage(expression: string, rolls: number[], total: number): 
   }
 
   return `🎲 Rolagem: ${expression}\nResultados (ordenados): ${results}\nTotal: ${total}`;
+}
+
+function formatHistoryRoll(expression: string, rolls: number[], total: number): string {
+  const shown = rolls.slice(0, HISTORY_ROLLS_DISPLAY);
+  let results = shown.join(', ');
+  if (rolls.length > HISTORY_ROLLS_DISPLAY) {
+    results = `${results}, +${rolls.length - HISTORY_ROLLS_DISPLAY}`;
+  }
+  return `${expression}: ${results} (total ${total})`;
 }
 
 export function buildRollMessage(input: string): RollMessageResult {
@@ -58,26 +73,49 @@ export const rollCommand = {
       option.setName('expressao').setDescription('Expressao no formato NdM (ex: 2d20)').setRequired(true),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
+    const canReply = await safeDeferReply(interaction, false);
+    if (!canReply) {
+      return;
+    }
+
     await withCooldown(interaction, 'roll', async () => {
       const input = interaction.options.getString('expressao', true);
       const result = buildRollMessage(input);
 
       if (!result.ok) {
         logger.warn('Entrada invalida no /roll', { input });
-        await safeReply(interaction, result.message);
+        await safeRespond(interaction, result.message);
         return;
       }
 
-      await safeReply(interaction, result.message);
+      appendProfileHistory(interaction.user.id, {
+        type: 'roll',
+        label: formatHistoryRoll(`${result.count}d${result.sides}`, result.rolls, result.total),
+      });
+
+      const intro = formatSuziIntro(interaction.user.id, {
+        displayName: interaction.user.globalName ?? interaction.user.username,
+        kind: 'roll',
+      });
+
+      const content = intro ? `${intro}\n\n${result.message}` : result.message;
+      await safeRespond(interaction, content);
+
+      const xpResult = awardXp(interaction.user.id, 2, { reason: 'roll', cooldownSeconds: 5 });
+      if (xpResult.leveledUp) {
+        await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+      }
 
       try {
         const { unlocked } = trackEvent(interaction.user.id, 'roll', {
           sides: result.sides,
           rolls: result.rolls,
+          count: result.count,
         });
-        const message = buildUnlockMessage(unlocked);
-        if (message) {
-          await safeReply(interaction, message);
+        unlockTitlesFromAchievements(interaction.user.id, unlocked);
+        const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+        if (unlockEmbed) {
+          await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
       } catch (error) {
         logger.warn('Falha ao registrar conquistas do /roll', error);

@@ -1,10 +1,15 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
-import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
+import { trackEvent } from '../../achievements/service.js';
 import { generateGeminiAnswer } from '../../services/gemini.js';
-import { getPlayer, getPreferences } from '../../services/storage.js';
-import { safeDeferReply, safeReply } from '../../utils/interactions.js';
+import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
+import { formatSuziIntro, getPlayerProfile } from '../../services/profileService.js';
+import { getPreferences } from '../../services/storage.js';
+import { unlockTitlesFromAchievements } from '../../services/titleService.js';
+import { awardXp } from '../../services/xpService.js';
+import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
+import { buildAchievementUnlockEmbed } from '../embeds.js';
 import { withCooldown } from '../cooldown.js';
 
 function withLeadingEmoji(text: string, emoji: string): string {
@@ -32,7 +37,7 @@ export const jogoCommand = {
       const gameName = interaction.options.getString('nome', true);
       const platform = interaction.options.getString('plataforma') ?? undefined;
       const prefs = getPreferences(userId);
-      const userProfile = getPlayer(userId);
+      const userProfile = getPlayerProfile(userId);
 
       const question = [
         `Quero dicas rapidas para o jogo ${gameName}.`,
@@ -43,20 +48,37 @@ export const jogoCommand = {
 
       try {
         const response = await generateGeminiAnswer({ question, userProfile });
-        await safeReply(interaction, withLeadingEmoji(response, '🎮'));
+        appendProfileHistory(userId, {
+          type: 'jogo',
+          label: platform ? `${gameName} (${platform})` : gameName,
+        });
+
+        const intro = formatSuziIntro(userId, {
+          displayName: interaction.user.globalName ?? interaction.user.username,
+          kind: 'jogo',
+        });
+
+        const content = intro ? `${intro}\n\n${withLeadingEmoji(response, '🎮')}` : withLeadingEmoji(response, '🎮');
+        await safeRespond(interaction, content);
+
+        const xpResult = awardXp(userId, 5, { reason: 'jogo', cooldownSeconds: 10 });
+        if (xpResult.leveledUp) {
+          await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+        }
 
         try {
           const { unlocked } = trackEvent(userId, 'jogo');
-          const message = buildUnlockMessage(unlocked);
-          if (message) {
-            await safeReply(interaction, message);
+          unlockTitlesFromAchievements(userId, unlocked);
+          const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+          if (unlockEmbed) {
+            await safeRespond(interaction, { embeds: [unlockEmbed] });
           }
         } catch (error) {
           logger.warn('Falha ao registrar conquistas do /jogo', error);
         }
       } catch (error) {
         logger.error('Erro no comando /jogo', error);
-        await safeReply(interaction, '⚠️ deu ruim aqui, tenta de novo');
+        await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
       }
     });
   },

@@ -10,6 +10,7 @@ export const env = {
   llmApiKey: process.env.LLM_API_KEY ?? '',
   geminiApiKey: process.env.GEMINI_API_KEY ?? '',
   geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+  allowAdminEdit: process.env.ALLOW_ADMIN_EDIT === 'true',
 };
 
 export function assertEnv(): void {

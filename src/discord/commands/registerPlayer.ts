@@ -1,10 +1,13 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
-import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
-import { getPlayer, upsertPlayer } from '../../services/storage.js';
-import { safeDeferReply, safeReply } from '../../utils/interactions.js';
+import { trackEvent } from '../../achievements/service.js';
+import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
+import { getPlayerProfile, upsertPlayerProfile } from '../../services/profileService.js';
+import { unlockTitlesFromAchievements } from '../../services/titleService.js';
+import { awardXp } from '../../services/xpService.js';
+import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
-import { buildRegisterSuccessEmbed, buildRegisterWarningEmbed } from '../embeds.js';
+import { buildAchievementUnlockEmbed, buildRegisterSuccessEmbed, buildRegisterWarningEmbed } from '../embeds.js';
 
 export const registerPlayerCommand = {
   data: new SlashCommandBuilder()
@@ -33,11 +36,11 @@ export const registerPlayerCommand = {
 
     try {
       const userId = interaction.user.id;
-      const existing = getPlayer(userId);
+      const existing = getPlayerProfile(userId);
 
       if (existing) {
         const embed = buildRegisterWarningEmbed(interaction.user);
-        await safeReply(interaction, { embeds: [embed] });
+        await safeRespond(interaction, { embeds: [embed] });
         return;
       }
 
@@ -46,22 +49,30 @@ export const registerPlayerCommand = {
       const className = interaction.options.getString('classe', true);
       const level = interaction.options.getInteger('nivel', true);
 
-      const profile = upsertPlayer(userId, { playerName, characterName, className, level });
+      const profile = upsertPlayerProfile(userId, { playerName, characterName, className, level });
+      appendProfileHistory(userId, { type: 'register', label: characterName });
+
       const embed = buildRegisterSuccessEmbed(interaction.user, profile);
-      await safeReply(interaction, { embeds: [embed] });
+      await safeRespond(interaction, { embeds: [embed] });
+
+      const xpResult = awardXp(userId, 10, { reason: 'register' });
+      if (xpResult.leveledUp) {
+        await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+      }
 
       try {
         const { unlocked } = trackEvent(userId, 'register');
-        const message = buildUnlockMessage(unlocked);
-        if (message) {
-          await safeReply(interaction, message);
+        unlockTitlesFromAchievements(userId, unlocked);
+        const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+        if (unlockEmbed) {
+          await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
       } catch (error) {
         logger.warn('Falha ao registrar conquistas do /register', error);
       }
     } catch (error) {
       logger.error('Erro no comando /register', error);
-      await safeReply(interaction, '⚠️ deu ruim aqui, tenta de novo');
+      await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
     }
   },
 };

@@ -1,10 +1,15 @@
-import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
-import { buildUnlockMessage, trackEvent } from '../../achievements/service.js';
+import { trackEvent } from '../../achievements/service.js';
 import { generateGeminiAnswer } from '../../services/gemini.js';
-import { appendHistory, getHistory, getPlayer } from '../../services/storage.js';
-import { safeDeferReply, safeReply } from '../../utils/interactions.js';
+import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
+import { formatSuziIntro, getPlayerProfile } from '../../services/profileService.js';
+import { appendHistory, getHistory } from '../../services/storage.js';
+import { unlockTitlesFromAchievements } from '../../services/titleService.js';
+import { awardXp } from '../../services/xpService.js';
+import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logger } from '../../utils/logger.js';
+import { buildAchievementUnlockEmbed, createSuziEmbed } from '../embeds.js';
 import { withCooldown } from '../cooldown.js';
 
 function safeText(text: string, maxLen: number): string {
@@ -35,7 +40,7 @@ export const perguntaCommand = {
       try {
         const history = getHistory(userId);
         const historyLines = history.map((h) => `${h.type}: ${h.content} -> ${h.response}`);
-        const userProfile = getPlayer(userId);
+        const userProfile = getPlayerProfile(userId);
 
         const response = await generateGeminiAnswer({
           question,
@@ -44,28 +49,47 @@ export const perguntaCommand = {
         });
 
         appendHistory(userId, { type: 'pergunta', content: question, response });
+        appendProfileHistory(userId, {
+          type: 'pergunta',
+          label: safeText(question, 50),
+        });
 
-        const embed = new EmbedBuilder()
+        const intro = formatSuziIntro(userId, {
+          displayName: interaction.user.globalName ?? interaction.user.username,
+          kind: 'pergunta',
+        });
+
+        const embed = createSuziEmbed('primary')
           .setTitle('🧠 Pergunta & Resposta')
           .addFields(
-            { name: '❓ Pergunta', value: safeText(question, 1024) },
-            { name: '✅ Resposta', value: safeText(response, 1024) },
+            { name: 'Pergunta', value: safeText(question, 1024) },
+            { name: 'Resposta', value: safeText(response, 1024) },
           );
 
-        await safeReply(interaction, { embeds: [embed] });
+        if (intro) {
+          embed.setDescription(intro);
+        }
+
+        await safeRespond(interaction, { embeds: [embed] });
+
+        const xpResult = awardXp(userId, 5, { reason: 'pergunta', cooldownSeconds: 10 });
+        if (xpResult.leveledUp) {
+          await safeRespond(interaction, `✨ Você subiu para o nível ${xpResult.newLevel} da Suzi!`);
+        }
 
         try {
           const { unlocked } = trackEvent(userId, 'pergunta');
-          const message = buildUnlockMessage(unlocked);
-          if (message) {
-            await safeReply(interaction, message);
+          unlockTitlesFromAchievements(userId, unlocked);
+          const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+          if (unlockEmbed) {
+            await safeRespond(interaction, { embeds: [unlockEmbed] });
           }
         } catch (error) {
           logger.warn('Falha ao registrar conquistas do /pergunta', error);
         }
       } catch (error) {
         logger.error('Erro no comando /pergunta', error);
-        await safeReply(interaction, '⚠️ deu ruim aqui, tenta de novo');
+        await safeRespond(interaction, '⚠️ deu ruim aqui, tenta de novo');
       }
     });
   },

@@ -93,6 +93,14 @@ export async function safeReply(
   }
 }
 
+export async function safeRespond(
+  interaction: ChatInputCommandInteraction,
+  payload: InteractionReplyOptions | InteractionEditReplyOptions | string,
+  ephemeral = false,
+): Promise<unknown> {
+  return safeReply(interaction, payload, ephemeral);
+}
+
 export async function safeEditReply(
   interaction: ChatInputCommandInteraction,
   payload: InteractionEditReplyOptions | string,

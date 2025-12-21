@@ -5,11 +5,15 @@ import { env } from '../../config/env.js';
 import { ajudaCommand } from './ajuda.js';
 import { conquistasCommand } from './conquistas.js';
 import { jogoCommand } from './jogo.js';
+import { nivelCommand } from './nivel.js';
 import { perfilCommand } from './perfil.js';
 import { perguntaCommand } from './pergunta.js';
 import { pingCommand } from './ping.js';
 import { registerPlayerCommand } from './registerPlayer.js';
 import { rollCommand } from './roll.js';
+import { settitleCommand } from './settitle.js';
+import { sobreCommand } from './sobre.js';
+import { titleclearCommand } from './titleclear.js';
 
 const commands = [
   pingCommand.data,
@@ -20,6 +24,10 @@ const commands = [
   rollCommand.data,
   registerPlayerCommand.data,
   conquistasCommand.data,
+  nivelCommand.data,
+  settitleCommand.data,
+  titleclearCommand.data,
+  sobreCommand.data,
 ];
 
 export async function registerCommands(): Promise<void> {

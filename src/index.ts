@@ -3,12 +3,16 @@ import { createClient } from './discord/client.js';
 import { ajudaCommand } from './discord/commands/ajuda.js';
 import { conquistasCommand } from './discord/commands/conquistas.js';
 import { jogoCommand } from './discord/commands/jogo.js';
+import { nivelCommand } from './discord/commands/nivel.js';
 import { perfilCommand } from './discord/commands/perfil.js';
 import { perguntaCommand } from './discord/commands/pergunta.js';
 import { pingCommand } from './discord/commands/ping.js';
 import { registerCommands } from './discord/commands/register.js';
 import { registerPlayerCommand } from './discord/commands/registerPlayer.js';
 import { rollCommand } from './discord/commands/roll.js';
+import { settitleCommand } from './discord/commands/settitle.js';
+import { sobreCommand } from './discord/commands/sobre.js';
+import { titleclearCommand } from './discord/commands/titleclear.js';
 import { safeReply } from './utils/interactions.js';
 import { logger } from './utils/logger.js';
 
@@ -23,6 +27,10 @@ const commandMap = {
   roll: rollCommand,
   register: registerPlayerCommand,
   conquistas: conquistasCommand,
+  nivel: nivelCommand,
+  settitle: settitleCommand,
+  titleclear: titleclearCommand,
+  sobre: sobreCommand,
 };
 
 discordInit().catch((error) => {

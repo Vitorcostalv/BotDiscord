@@ -1,7 +1,7 @@
 import { logger } from '../utils/logger.js';
 
 import { parseDice, rollDice } from './dice.js';
-import type { PlayerProfile } from './storage.js';
+import type { PlayerProfile } from './profileService.js';
 
 type GeminiInput = {
   question: string;
