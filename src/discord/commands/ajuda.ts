@@ -9,7 +9,8 @@ export const ajudaCommand = {
         '/jogo nome:<texto> plataforma:<opcional> - Ajuda estruturada para um jogo.\n' +
         '/pergunta pergunta:<texto> - Perguntas sobre jogos com memoria curta.\n' +
         '/roll expressao:<NdM> - Rolagem de dados (ex: 2d20).\n' +
-        '/perfil plataforma:<opcional> genero:<opcional> - Salva preferencias.\n' +
+        '/register nome_jogador:<texto> nome_personagem:<texto> classe:<texto> nivel:<1..99> - Registra o player.\n' +
+        '/perfil - Mostra o perfil do player.\n' +
         '/ajuda - Mostra esta mensagem.',
     );
   },

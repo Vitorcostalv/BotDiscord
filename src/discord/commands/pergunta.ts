@@ -1,44 +1,43 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
-import { generateAnswer } from '../../services/llm.js';
-import { appendHistory, getHistory } from '../../services/storage.js';
+import { generateGeminiAnswer } from '../../services/gemini.js';
+import { appendHistory, getHistory, getPlayer } from '../../services/storage.js';
 import { logger } from '../../utils/logger.js';
 import { withCooldown } from '../cooldown.js';
 
-const DEFAULT_REPLY =
-  'Estou pensando como ajudar. Por enquanto, aqui vai: foque em entender as mecânicas principais e explorar aos poucos. O que mais você quer saber?';
+function withLeadingEmoji(text: string, emoji: string): string {
+  if (!text) return `${emoji}`;
+  if (/^[\u{1F300}-\u{1FAFF}]/u.test(text)) return text;
+  return `${emoji} ${text}`;
+}
 
 export const perguntaCommand = {
   data: new SlashCommandBuilder()
     .setName('pergunta')
-    .setDescription('Faça uma pergunta sobre jogos e receba ajuda')
+    .setDescription('Faca uma pergunta sobre jogos e receba ajuda')
     .addStringOption((option) => option.setName('pergunta').setDescription('Sua pergunta').setRequired(true)),
   async execute(interaction: ChatInputCommandInteraction) {
     await withCooldown(interaction, 'pergunta', async () => {
       const userId = interaction.user.id;
       const question = interaction.options.getString('pergunta', true);
-      const history = getHistory(userId);
-      const context = history
-        .map((h) => `${new Date(h.timestamp).toISOString()} - ${h.type}: ${h.content} -> ${h.response}`)
-        .join('\n');
 
       try {
         await interaction.deferReply();
-        const llmResult = await generateAnswer(
-          `Contexto de jogos. Pergunta: ${question}. Seja útil, conciso e em pt-BR. Sem inventar detalhes de patches.`,
-          context,
-        );
+        const history = getHistory(userId);
+        const historyLines = history.map((h) => `${h.type}: ${h.content} -> ${h.response}`);
+        const userProfile = getPlayer(userId);
 
-        const response =
-          typeof llmResult === 'string'
-            ? llmResult
-            : `${DEFAULT_REPLY}\n(Histórico recente: ${history.length ? `${history.length} entradas` : 'nenhum'}).`;
+        const response = await generateGeminiAnswer({
+          question,
+          userProfile,
+          userHistory: historyLines,
+        });
 
         appendHistory(userId, { type: 'pergunta', content: question, response });
-        await interaction.editReply(response);
+        await interaction.editReply(withLeadingEmoji(response, '🎮'));
       } catch (error) {
         logger.error('Erro no comando /pergunta', error);
-        await interaction.editReply('deu ruim aqui, tenta de novo');
+        await interaction.editReply('⚠️ deu ruim aqui, tenta de novo');
       }
     });
   },

@@ -6,6 +6,8 @@ export const env = {
   discordToken: process.env.DISCORD_TOKEN ?? '',
   discordAppId: process.env.DISCORD_APP_ID ?? '',
   llmApiKey: process.env.LLM_API_KEY ?? '',
+  geminiApiKey: process.env.GEMINI_API_KEY ?? '',
+  geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
 };
 
 export function assertEnv(): void {

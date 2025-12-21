@@ -7,6 +7,7 @@ import { perfilCommand } from './perfil.js';
 import { perguntaCommand } from './pergunta.js';
 import { pingCommand } from './ping.js';
 import { rollCommand } from './roll.js';
+import { registerPlayerCommand } from './registerPlayer.js';
 
 const commands = [
   pingCommand.data,
@@ -15,6 +16,7 @@ const commands = [
   perfilCommand.data,
   ajudaCommand.data,
   rollCommand.data,
+  registerPlayerCommand.data,
 ];
 
 export async function registerCommands(): Promise<void> {

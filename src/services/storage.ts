@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 import { logger } from '../utils/logger.js';
@@ -22,14 +22,49 @@ type PersistedUserData = {
 
 type StoreShape = Record<string, PersistedUserData>;
 
+export type PlayerProfile = {
+  playerName: string;
+  characterName: string;
+  className: string;
+  level: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type PlayerStore = Record<string, PlayerProfile>;
+
 const DATA_DIR = join(process.cwd(), 'data');
 const STORAGE_PATH = join(DATA_DIR, 'storage.json');
+const PLAYERS_PATH = join(DATA_DIR, 'players.json');
 const HISTORY_LIMIT = 10;
 
-function ensureDataFile(): void {
+function ensureDataDir(): void {
   if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
   }
+}
+
+function writeJsonAtomic(path: string, data: unknown): void {
+  ensureDataDir();
+  const tempPath = `${path}.${Date.now()}.tmp`;
+  writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
+  try {
+    renameSync(tempPath, path);
+  } catch (error) {
+    try {
+      if (existsSync(path)) {
+        unlinkSync(path);
+      }
+      renameSync(tempPath, path);
+    } catch (finalError) {
+      logger.error('Falha ao gravar arquivo, usando escrita direta', finalError);
+      writeFileSync(path, JSON.stringify(data, null, 2), 'utf-8');
+    }
+  }
+}
+
+function ensureDataFile(): void {
+  ensureDataDir();
   if (!existsSync(STORAGE_PATH)) {
     writeFileSync(STORAGE_PATH, JSON.stringify({}, null, 2), 'utf-8');
   }
@@ -48,7 +83,26 @@ function readStore(): StoreShape {
 }
 
 function writeStore(store: StoreShape): void {
-  writeFileSync(STORAGE_PATH, JSON.stringify(store, null, 2), 'utf-8');
+  writeJsonAtomic(STORAGE_PATH, store);
+}
+
+function readPlayerStore(): PlayerStore {
+  ensureDataDir();
+  if (!existsSync(PLAYERS_PATH)) {
+    writeJsonAtomic(PLAYERS_PATH, {});
+  }
+  const raw = readFileSync(PLAYERS_PATH, 'utf-8');
+  try {
+    return JSON.parse(raw) as PlayerStore;
+  } catch (error) {
+    logger.error('Falha ao ler players, recriando arquivo', error);
+    writeJsonAtomic(PLAYERS_PATH, {});
+    return {};
+  }
+}
+
+function writePlayerStore(store: PlayerStore): void {
+  writeJsonAtomic(PLAYERS_PATH, store);
 }
 
 export function appendHistory(
@@ -81,4 +135,46 @@ export function savePreferences(userId: string, prefs: UserPreferences): UserPre
 export function getPreferences(userId: string): UserPreferences {
   const store = readStore();
   return store[userId]?.preferences ?? {};
+}
+
+export function getPlayer(userId: string): PlayerProfile | null {
+  const store = readPlayerStore();
+  return store[userId] ?? null;
+}
+
+type PlayerInput = {
+  playerName: string;
+  characterName: string;
+  className: string;
+  level: number;
+};
+
+export function upsertPlayer(userId: string, data: PlayerInput): PlayerProfile {
+  const store = readPlayerStore();
+  const now = Date.now();
+  const existing = store[userId];
+  const createdAt = existing?.createdAt ?? now;
+  const profile: PlayerProfile = {
+    playerName: data.playerName,
+    characterName: data.characterName,
+    className: data.className,
+    level: data.level,
+    createdAt,
+    updatedAt: now,
+  };
+  store[userId] = profile;
+  writePlayerStore(store);
+  return profile;
+}
+
+export function updatePlayerLevel(userId: string, level: number): PlayerProfile | null {
+  const store = readPlayerStore();
+  const existing = store[userId];
+  if (!existing) {
+    return null;
+  }
+  const updated: PlayerProfile = { ...existing, level, updatedAt: Date.now() };
+  store[userId] = updated;
+  writePlayerStore(store);
+  return updated;
 }

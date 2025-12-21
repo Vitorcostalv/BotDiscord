@@ -4,6 +4,7 @@ import { jogoCommand } from './discord/commands/jogo.js';
 import { perfilCommand } from './discord/commands/perfil.js';
 import { perguntaCommand } from './discord/commands/pergunta.js';
 import { pingCommand } from './discord/commands/ping.js';
+import { registerPlayerCommand } from './discord/commands/registerPlayer.js';
 import { rollCommand } from './discord/commands/roll.js';
 import { registerCommands } from './discord/commands/register.js';
 import { createClient } from './discord/client.js';
@@ -18,6 +19,7 @@ const commandMap = {
   perfil: perfilCommand,
   ajuda: ajudaCommand,
   roll: rollCommand,
+  register: registerPlayerCommand,
 };
 
 discordInit().catch((error) => {
