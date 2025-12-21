@@ -1,5 +1,6 @@
-import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
+import { buildRegisterSuccessEmbed, buildRegisterWarningEmbed } from '../embeds.js';
 import { getPlayer, upsertPlayer } from '../../services/storage.js';
 import { logger } from '../../utils/logger.js';
 
@@ -24,30 +25,31 @@ export const registerPlayerCommand = {
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     try {
+      await interaction.deferReply();
       const userId = interaction.user.id;
       const existing = getPlayer(userId);
+
+      if (existing) {
+        const embed = buildRegisterWarningEmbed(interaction.user);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+
       const playerName = interaction.options.getString('nome_jogador', true);
       const characterName = interaction.options.getString('nome_personagem', true);
       const className = interaction.options.getString('classe', true);
       const level = interaction.options.getInteger('nivel', true);
 
       const profile = upsertPlayer(userId, { playerName, characterName, className, level });
-      const title = existing ? '📝 Registro atualizado' : '📝 Registro criado';
-
-      const embed = new EmbedBuilder()
-        .setTitle(title)
-        .setColor(0x3498db)
-        .addFields(
-          { name: 'Nome do jogador', value: profile.playerName, inline: true },
-          { name: 'Nome do personagem', value: profile.characterName, inline: true },
-          { name: '🧙 Classe', value: profile.className, inline: true },
-          { name: 'Nivel', value: String(profile.level), inline: true },
-        );
-
-      await interaction.reply({ embeds: [embed] });
+      const embed = buildRegisterSuccessEmbed(interaction.user, profile);
+      await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       logger.error('Erro no comando /register', error);
-      await interaction.reply('⚠️ deu ruim aqui, tenta de novo');
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply('⚠️ deu ruim aqui, tenta de novo');
+      } else {
+        await interaction.reply('⚠️ deu ruim aqui, tenta de novo');
+      }
     }
   },
 };
