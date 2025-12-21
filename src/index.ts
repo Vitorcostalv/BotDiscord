@@ -4,13 +4,12 @@ import { jogoCommand } from './discord/commands/jogo.js';
 import { perfilCommand } from './discord/commands/perfil.js';
 import { perguntaCommand } from './discord/commands/pergunta.js';
 import { pingCommand } from './discord/commands/ping.js';
+import { rollCommand } from './discord/commands/roll.js';
 import { registerCommands } from './discord/commands/register.js';
 import { createClient } from './discord/client.js';
 import { logger } from './utils/logger.js';
 
 assertEnv();
-
-const client = createClient();
 
 const commandMap = {
   ping: pingCommand,
@@ -18,6 +17,7 @@ const commandMap = {
   pergunta: perguntaCommand,
   perfil: perfilCommand,
   ajuda: ajudaCommand,
+  roll: rollCommand,
 };
 
 discordInit().catch((error) => {
@@ -28,6 +28,11 @@ discordInit().catch((error) => {
 async function discordInit(): Promise<void> {
   await registerCommands();
 
+  const client = createClient();
+  await startClient(client);
+}
+
+async function startClient(client: ReturnType<typeof createClient>): Promise<void> {
   client.on('clientReady', () => {
     logger.info(`Bot logado como ${client.user?.tag}`);
   });
@@ -37,7 +42,7 @@ async function discordInit(): Promise<void> {
 
     const command = commandMap[interaction.commandName as keyof typeof commandMap];
     if (!command) {
-      await interaction.reply('Comando não encontrado.');
+      await interaction.reply('Comando nao encontrado.');
       return;
     }
 

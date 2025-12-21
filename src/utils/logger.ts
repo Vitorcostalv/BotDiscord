@@ -1,9 +1,23 @@
 /* eslint-disable no-console */
 type LogLevel = 'info' | 'warn' | 'error';
 
+function formatMeta(meta: unknown): string {
+  if (meta instanceof Error) {
+    return JSON.stringify({ message: meta.message, stack: meta.stack });
+  }
+  if (typeof meta === 'string') {
+    return meta;
+  }
+  try {
+    return JSON.stringify(meta);
+  } catch {
+    return String(meta);
+  }
+}
+
 function log(level: LogLevel, message: string, meta?: unknown): void {
   const timestamp = new Date().toISOString();
-  const extra = meta ? ` | ${JSON.stringify(meta)}` : '';
+  const extra = meta ? ` | ${formatMeta(meta)}` : '';
   const line = `[${timestamp}] [${level.toUpperCase()}] ${message}${extra}`;
   if (level === 'error') {
     console.error(line);
