@@ -2,14 +2,18 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import type { AchievementDefinition } from '../../achievements/definitions.js';
 import { listAllAchievements, trackEvent, getUserAchievements } from '../../achievements/service.js';
+import { env } from '../../config/env.js';
 import { getHistory } from '../../services/historyService.js';
 import { getPlayerProfile } from '../../services/profileService.js';
+import { getSteamLink, getCachedSummary, mapPersonaState } from '../../services/steamService.js';
 import { getTitleLabel, getAutoTitleForClass, getUserTitleState, unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { getUserXp } from '../../services/xpService.js';
 import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logError, logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildMissingProfileEmbed, buildProfileEmbed } from '../embeds.js';
+
+const EMOJI_GAME = '\u{1F3AE}';
 
 export const perfilCommand = {
   data: new SlashCommandBuilder()
@@ -56,6 +60,55 @@ export const perfilCommand = {
         equippedTitle,
         classTitle,
       });
+
+      const steamLink = getSteamLink(target.id);
+      if (steamLink) {
+        if (!env.steamApiKey) {
+          embed.addFields({
+            name: `${EMOJI_GAME} Steam`,
+            value: 'Recursos Steam desabilitados. Configure STEAM_API_KEY.',
+          });
+        } else {
+          const summaryResult = await getCachedSummary(steamLink.steamId64);
+          if (summaryResult.ok) {
+            const summary = summaryResult.summary;
+            const status = mapPersonaState(summary.personastate);
+            const game = summary.gameextrainfo ? `${EMOJI_GAME} ${summary.gameextrainfo}` : '-';
+            const last = summary.lastlogoff ? `<t:${summary.lastlogoff}:R>` : '-';
+            const lines = [
+              `Nick: ${summary.personaname}`,
+              `Status: ${status}`,
+              `Jogando agora: ${game}`,
+              `Ultimo online: ${last}`,
+              `Link: ${summary.profileurl || '-'}`,
+            ];
+            if (!summary.gameextrainfo) {
+              lines.push('Obs: jogo atual so aparece se o perfil e detalhes estiverem publicos na Steam.');
+            }
+            embed.addFields({
+              name: `${EMOJI_GAME} Steam`,
+              value: lines.join('\n'),
+            });
+            if (summary.avatarfull) {
+              embed.setThumbnail(summary.avatarfull);
+            }
+          } else {
+            const message =
+              summaryResult.reason === 'NOT_FOUND'
+                ? 'Perfil privado ou SteamID invalido.'
+                : 'Steam indisponivel agora.';
+            embed.addFields({
+              name: `${EMOJI_GAME} Steam`,
+              value: message,
+            });
+            logWarn('SUZI-CMD-002', new Error('Steam indisponivel'), {
+              message: 'Falha ao carregar Steam no /perfil',
+              steamId64: steamLink.steamId64,
+              reason: summaryResult.reason,
+            });
+          }
+        }
+      }
 
       await safeRespond(interaction, { embeds: [embed] });
 

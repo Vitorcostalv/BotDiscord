@@ -37,6 +37,13 @@ export const ERROR_CATALOG: ErrorCatalogEntry[] = [
     fix: ['Defina GEMINI_MODEL valido (ex: gemini-2.5-flash).'],
   },
   {
+    code: 'SUZI-ENV-005',
+    title: 'STEAM_API_KEY ausente',
+    symptoms: ['Comandos Steam desativados', 'Perfil nao mostra dados Steam'],
+    cause: 'Variavel STEAM_API_KEY nao definida.',
+    fix: ['Defina STEAM_API_KEY no host para habilitar recursos Steam.'],
+  },
+  {
     code: 'SUZI-DISCORD-001',
     title: 'Unknown interaction (10062)',
     symptoms: ['Resposta falha com interaction expired'],

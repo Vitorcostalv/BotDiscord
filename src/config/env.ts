@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 
-import { logError } from '../utils/logging.js';
+import { logError, logWarn } from '../utils/logging.js';
 
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config({ path: '.env' });
@@ -14,6 +14,7 @@ export const env = {
   geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
   allowAdminEdit: process.env.ALLOW_ADMIN_EDIT === 'true',
   roleMasterId: process.env.ROLE_MASTER_ID ?? '',
+  steamApiKey: process.env.STEAM_API_KEY ?? '',
 };
 
 export function assertEnv(): void {
@@ -25,6 +26,9 @@ export function assertEnv(): void {
   if (!env.discordAppId) {
     missing.push('DISCORD_APP_ID');
     logError('SUZI-ENV-002', new Error('DISCORD_APP_ID ausente'), { message: 'Variavel obrigatoria faltando' });
+  }
+  if (!env.steamApiKey) {
+    logWarn('SUZI-ENV-005', new Error('STEAM_API_KEY ausente'), { message: 'Recursos Steam desativados' });
   }
 
   if (missing.length) {

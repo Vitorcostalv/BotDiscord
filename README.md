@@ -10,6 +10,7 @@
 - `/nivel nivel:<1..99> user:<opcional>` - Atualiza o nivel do personagem.
 - `/settitle title:<titulo>` - Equipa um titulo desbloqueado.
 - `/titleclear` - Remove o titulo equipado.
+- `/steam link|view|refresh|unlink` - Vincula e consulta perfil Steam.
 - `/sobre` - Lore da Suzi.
 - `/conquistas` - Lista conquistas do player.
 - `/ajuda` - Mostra a lista de comandos.
@@ -20,6 +21,7 @@
 - `GEMINI_API_KEY` (obrigatorio para /pergunta e /jogo)
 - `GEMINI_MODEL` (opcional, padrao: `gemini-2.5-flash`)
 - `ALLOW_ADMIN_EDIT` (opcional, `true` libera /nivel em outros users)
+- `STEAM_API_KEY` (obrigatorio para recursos Steam)
 - `LLM_API_KEY` (opcional, stub de LLM legacy)
 
 Notas:
@@ -37,6 +39,11 @@ Checklist para trocar a key no Render:
 3) (Opcional) Use `DEBUG_GEMINI=true` para confirmar o log com o last4
 
 Obs: rolagem de dados e sempre local com `crypto.randomInt`.
+
+## Steam
+- Configure `STEAM_API_KEY` no ambiente.
+- Comandos: `/steam link`, `/steam view`, `/steam refresh`, `/steam unlink`.
+- Observacao: jogo atual so aparece se o perfil e detalhes estiverem publicos na Steam.
 
 ## Troubleshooting (Catalogo de Erros)
 O catalogo completo fica em `src/errors/catalog.ts`.

@@ -134,6 +134,10 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
         value: safeText('/ping - Verifica latencia do bot\n/sobre - Saiba a lore da Suzi', 1024),
       },
       {
+        name: 'Integracoes',
+        value: safeText('/steam link|view|refresh|unlink\n- Vincula e consulta perfil Steam', 1024),
+      },
+      {
         name: `${EMOJI.game} Jogos & Perguntas`,
         value: safeText(
           '/jogo nome:<texto> plataforma:<opcional>\n- Ajuda estruturada sobre um jogo\n' +
