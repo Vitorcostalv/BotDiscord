@@ -18,7 +18,12 @@ export async function withCooldown(
 
   if (expiresAt && now < expiresAt) {
     const waitSeconds = Math.ceil((expiresAt - now) / 1000);
-    await interaction.reply({ content: `Segura ai, aguarde ${waitSeconds}s para usar novamente.`, ephemeral: true });
+    const content = `Segura ai, aguarde ${waitSeconds}s para usar novamente.`;
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply(content);
+    } else {
+      await interaction.reply({ content, ephemeral: true });
+    }
     return;
   }
 

@@ -1,4 +1,3 @@
-import { env } from '../config/env.js';
 import { parseDice, rollDice } from './dice.js';
 import type { PlayerProfile } from './storage.js';
 import { logger } from '../utils/logger.js';
@@ -19,6 +18,9 @@ const MAX_RETRIES = 3;
 const RETRYABLE_STATUS = new Set([429, 500, 503]);
 const AUTH_ERROR_MESSAGE =
   '⚠️ Minha chave/modelo do Gemini parece invalida ou sem permissao. Verifique GEMINI_API_KEY e GEMINI_MODEL.';
+const MIN_API_KEY_LENGTH = 30;
+
+let debugKeyLogged = false;
 
 function buildSystemInstruction(): string {
   return [
@@ -87,14 +89,21 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function fetchGemini(prompt: string): Promise<GeminiResult> {
-  if (!env.geminiApiKey) {
-    logger.warn('GEMINI_API_KEY ausente; usando fallback do Gemini.');
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey || apiKey.length < MIN_API_KEY_LENGTH) {
+    logger.error('Gemini desabilitado: GEMINI_API_KEY ausente ou invalida');
     return { ok: false, type: 'missing_key' };
   }
 
-  const model = env.geminiModel || DEFAULT_MODEL;
+  if (process.env.DEBUG_GEMINI === 'true' && !debugKeyLogged) {
+    const last4 = apiKey.slice(-4);
+    logger.info(`Gemini key loaded (len=${apiKey.length}, last4=${last4})`);
+    debugKeyLogged = true;
+  }
+
+  const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
   const endpoint = buildEndpoint(model);
-  const url = `${endpoint}?key=${env.geminiApiKey}`;
+  const url = `${endpoint}?key=${apiKey}`;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
     const controller = new AbortController();
@@ -110,15 +119,23 @@ async function fetchGemini(prompt: string): Promise<GeminiResult> {
 
       if (!response.ok) {
         const bodyText = await response.text();
+        const bodySnippet = bodyText.slice(0, 500);
         logger.warn('Gemini respondeu com erro', {
           status: response.status,
           statusText: response.statusText,
-          body: bodyText,
+          body: bodySnippet,
           model,
           endpoint,
         });
 
-        if (response.status === 403 || response.status === 404) {
+        if (response.status === 403) {
+          logger.error(
+            'Gemini retornou 403. Verifique se a API key e valida, nao vazada e se o modelo tem permissao.',
+          );
+          return { ok: false, type: 'auth' };
+        }
+
+        if (response.status === 404) {
           return { ok: false, type: 'auth' };
         }
 
@@ -139,7 +156,7 @@ async function fetchGemini(prompt: string): Promise<GeminiResult> {
       logger.warn('Resposta do Gemini sem texto', { model, endpoint });
       return { ok: false, type: 'other' };
     } catch (error) {
-      logger.warn('Erro ao consultar Gemini', { error, model, endpoint, attempt });
+      logger.warn('Erro ao consultar Gemini', { error, model, attempt });
       if (attempt < MAX_RETRIES) {
         await sleep(300 * 2 ** (attempt - 1));
         continue;

@@ -54,10 +54,14 @@ async function startClient(client: ReturnType<typeof createClient>): Promise<voi
       await command.execute(interaction);
     } catch (error) {
       logger.error('Erro ao processar comando', error);
-      if (interaction.replied || interaction.deferred) {
-        await interaction.editReply('deu ruim aqui, tenta de novo');
-      } else {
-        await interaction.reply('deu ruim aqui, tenta de novo');
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.editReply('deu ruim aqui, tenta de novo');
+        } else {
+          await interaction.reply('deu ruim aqui, tenta de novo');
+        }
+      } catch (replyError) {
+        logger.warn('Falha ao responder erro do comando', replyError);
       }
     }
   });
