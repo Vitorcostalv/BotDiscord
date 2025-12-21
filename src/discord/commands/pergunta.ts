@@ -1,14 +1,16 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js';
 
 import { generateGeminiAnswer } from '../../services/gemini.js';
 import { appendHistory, getHistory, getPlayer } from '../../services/storage.js';
 import { logger } from '../../utils/logger.js';
 import { withCooldown } from '../cooldown.js';
 
-function withLeadingEmoji(text: string, emoji: string): string {
-  if (!text) return `${emoji}`;
-  if (/^[\u{1F300}-\u{1FAFF}]/u.test(text)) return text;
-  return `${emoji} ${text}`;
+function safeText(text: string, maxLen: number): string {
+  const normalized = text.trim();
+  if (!normalized) return '-';
+  if (normalized.length <= maxLen) return normalized;
+  const sliceEnd = Math.max(0, maxLen - 3);
+  return `${normalized.slice(0, sliceEnd).trimEnd()}...`;
 }
 
 export const perguntaCommand = {
@@ -34,7 +36,15 @@ export const perguntaCommand = {
         });
 
         appendHistory(userId, { type: 'pergunta', content: question, response });
-        await interaction.editReply(withLeadingEmoji(response, '🎮'));
+
+        const embed = new EmbedBuilder()
+          .setTitle('🧠 Pergunta & Resposta')
+          .addFields(
+            { name: '❓ Pergunta', value: safeText(question, 1024) },
+            { name: '✅ Resposta', value: safeText(response, 1024) },
+          );
+
+        await interaction.editReply({ embeds: [embed] });
       } catch (error) {
         logger.error('Erro no comando /pergunta', error);
         await interaction.editReply('⚠️ deu ruim aqui, tenta de novo');
