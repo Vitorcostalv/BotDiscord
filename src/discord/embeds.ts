@@ -24,6 +24,9 @@ const EMOJI = {
   warning: '\u26A0\uFE0F',
   trophy: '\u{1F3C6}',
   scroll: '\u{1F4DC}',
+  pin: '\u{1F4CC}',
+  tag: '\u{1F3F7}\uFE0F',
+  bolt: '\u26A1',
 };
 
 const CLASS_EMOJI: Record<string, string> = {
@@ -76,10 +79,20 @@ function getClassEmoji(className: string): string {
   return CLASS_EMOJI[normalized] ?? EMOJI.class;
 }
 
-function formatAchievements(summary: AchievementSummary): string {
+function formatAchievementsCompact(summary: AchievementSummary): string {
+  const recent = summary.recent.slice(0, 3);
+  const lines = [`Total: ${summary.total}`];
+  if (recent.length) {
+    lines.push(...recent.map((item) => `- ${item.emoji} ${item.name}`));
+  }
+  return safeText(lines.join('\n'), 1024);
+}
+
+function formatAchievementsDetailed(summary: AchievementSummary): string {
   const recent = summary.recent.slice(0, 6);
-  const list = recent.length ? recent.map((item) => `${item.emoji} ${item.name}`).join('\n') : 'Nenhuma ainda.';
-  return safeText(`${list}\nTotal: ${summary.total}`, 1024);
+  const lines = recent.length ? recent.map((item) => `${item.emoji} ${item.name}`) : ['Nenhuma ainda.'];
+  lines.push(`Total: ${summary.total}`);
+  return safeText(lines.join('\n'), 1024);
 }
 
 function formatHistory(events: HistoryEvent[] = []): string {
@@ -99,10 +112,22 @@ function formatTitle(equippedTitle: string | null | undefined, classTitle: strin
   return `Classe: ${safeText(classTitle, 256)}`;
 }
 
+function formatTitleCompact(equippedTitle: string | null | undefined, classTitle: string): string {
+  if (equippedTitle) {
+    return `Equipado: ${safeText(equippedTitle, 256)}`;
+  }
+  return `Classe: ${safeText(classTitle, 256)}`;
+}
+
 function formatXp(xp?: XpState): string {
   if (!xp) return '-';
   const streak = xp.streak.days > 1 ? `\nStreak: ${xp.streak.days} dias` : '';
   return `XP: ${xp.xp}\nNivel: ${xp.level}${streak}`;
+}
+
+function formatXpCompact(xp?: XpState): string {
+  if (!xp) return '-';
+  return `Nivel: ${xp.level} - XP: ${xp.xp}`;
 }
 
 export function createSuziEmbed(color: keyof typeof SUZI_COLORS = 'primary'): EmbedBuilder {
@@ -161,7 +186,7 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
         name: `${EMOJI.profile} Perfil do Player`,
         value: safeText(
           '/register\n- Registra seu jogador\n' +
-            '/perfil user:<opcional>\n- Mostra o perfil\n' +
+            '/perfil user:<opcional> detalhado:<opcional>\n- Mostra o perfil (compacto ou detalhado)\n' +
             '/nivel nivel:<1..99> user:<opcional>\n- Atualiza o nivel do personagem\n' +
             '/settitle title:<titulo>\n- Equipa um titulo desbloqueado\n' +
             '/titleclear\n- Remove o titulo equipado\n' +
@@ -209,12 +234,52 @@ export function buildRegisterWarningEmbed(user?: User | null): EmbedBuilder {
   return embed;
 }
 
-export function buildProfileEmbed(user: User, player: PlayerProfile, extras: ProfileExtras): EmbedBuilder {
+export function buildProfileEmbed(
+  user: User,
+  player: PlayerProfile,
+  extras: ProfileExtras,
+  mode: 'compact' | 'detailed' = 'detailed',
+): EmbedBuilder {
+  const playerLabel = player.playerName ? safeText(player.playerName, 256) : `<@${user.id}>`;
+  const description = `${safeText(player.characterName, 256)} - ${safeText(player.className, 256)} - Nivel ${player.level}`;
+
+  if (mode === 'compact') {
+    const compactEmbed = createSuziEmbed('primary')
+      .setTitle(`${EMOJI.profile} Perfil - ${playerLabel}`)
+      .setDescription(description)
+      .setThumbnail(user.displayAvatarURL({ size: 128 }))
+      .addFields(
+        {
+          name: `${EMOJI.pin} Personagem`,
+          value: safeText(
+            `Nome: ${player.characterName}\nClasse: ${player.className}\nNivel: ${player.level}`,
+            1024,
+          ),
+          inline: true,
+        },
+        {
+          name: `${EMOJI.tag} Titulo`,
+          value: formatTitleCompact(extras.equippedTitle, extras.classTitle),
+          inline: true,
+        },
+        { name: `${EMOJI.bolt} Suzi XP`, value: formatXpCompact(extras.xp), inline: true },
+        {
+          name: `${EMOJI.trophy} Conquistas`,
+          value: extras.achievements ? formatAchievementsCompact(extras.achievements) : 'Total: 0',
+        },
+      )
+      .setFooter({
+        text: 'Use /historico para ver rolagens - Use /perfil detalhado:true para ver tudo',
+      });
+
+    return compactEmbed;
+  }
+
   const classEmoji = getClassEmoji(player.className);
 
   const embed = createSuziEmbed('primary')
-    .setTitle(`${EMOJI.profile} Perfil do Player`)
-    .setDescription(`Jogador: ${safeText(player.playerName, 1024)}`)
+    .setTitle(`${EMOJI.profile} Perfil - ${playerLabel}`)
+    .setDescription(description)
     .setThumbnail(user.displayAvatarURL({ size: 128 }))
     .addFields(
       { name: 'Personagem', value: safeText(player.characterName, 1024), inline: true },
@@ -228,7 +293,7 @@ export function buildProfileEmbed(user: User, player: PlayerProfile, extras: Pro
   if (extras.achievements) {
     embed.addFields({
       name: `${EMOJI.trophy} Conquistas`,
-      value: formatAchievements(extras.achievements),
+      value: formatAchievementsDetailed(extras.achievements),
     });
   }
 
