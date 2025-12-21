@@ -15,3 +15,7 @@ Configure no `.env`:
 - `GEMINI_MODEL` (padrao: `gemini-2.5-flash`)
 
 Obs: rolagem de dados e sempre local com `crypto.randomInt`.
+
+## Troubleshooting (Gemini)
+- 403/404: chave ou modelo invalido/sem permissao. Verifique `GEMINI_API_KEY` e `GEMINI_MODEL`.
+- 429: limite de requisicoes. Aguarde alguns segundos e tente de novo.

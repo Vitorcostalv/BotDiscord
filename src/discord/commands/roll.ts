@@ -7,15 +7,16 @@ import { withCooldown } from '../cooldown.js';
 const MAX_ROLLS_DISPLAY = 100;
 
 function formatRollMessage(expression: string, rolls: number[], total: number): string {
-  const shownRolls = rolls.slice(0, MAX_ROLLS_DISPLAY);
+  const orderedRolls = [...rolls].sort((a, b) => a - b);
+  const shownRolls = orderedRolls.slice(0, MAX_ROLLS_DISPLAY);
   let results = shownRolls.join(', ');
 
-  if (rolls.length > MAX_ROLLS_DISPLAY) {
-    const remaining = rolls.length - MAX_ROLLS_DISPLAY;
+  if (orderedRolls.length > MAX_ROLLS_DISPLAY) {
+    const remaining = orderedRolls.length - MAX_ROLLS_DISPLAY;
     results = `${results}, ... +${remaining} resultados`;
   }
 
-  return `🎲 Rolagem: ${expression}\nResultados: ${results}\nTotal: ${total}`;
+  return `🎲 Rolagem: ${expression}\nResultados (ordenados): ${results}\nTotal: ${total}`;
 }
 
 export function buildRollMessage(input: string): { ok: true; message: string } | { ok: false; message: string } {

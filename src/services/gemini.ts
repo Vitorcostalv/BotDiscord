@@ -9,8 +9,16 @@ type GeminiInput = {
   userHistory?: string[];
 };
 
+type GeminiResult =
+  | { ok: true; text: string }
+  | { ok: false; type: 'auth' | 'other' | 'missing_key' };
+
 const DEFAULT_MODEL = 'gemini-2.5-flash';
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 15000;
+const MAX_RETRIES = 3;
+const RETRYABLE_STATUS = new Set([429, 500, 503]);
+const AUTH_ERROR_MESSAGE =
+  '⚠️ Minha chave/modelo do Gemini parece invalida ou sem permissao. Verifique GEMINI_API_KEY e GEMINI_MODEL.';
 
 function buildSystemInstruction(): string {
   return [
@@ -42,7 +50,7 @@ function extractDiceExpression(text: string): string | null {
 }
 
 function formatRollOutput(expression: string, rolls: number[], total: number): string {
-  const maxShown = 30;
+  const maxShown = 100;
   const shown = rolls.slice(0, maxShown);
   let results = shown.join(', ');
   if (rolls.length > maxShown) {
@@ -53,45 +61,96 @@ function formatRollOutput(expression: string, rolls: number[], total: number): s
   return `🎲 Rolagem: ${expression}\nResultados: ${results}\nTotal: ${total}`;
 }
 
-async function fetchGemini(prompt: string): Promise<string | null> {
+function buildEndpoint(model: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
+
+function buildRequestBody(prompt: string): unknown {
+  return {
+    systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+  };
+}
+
+function extractTextFromResponse(data: unknown): string | null {
+  const root = data as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const parts = root.candidates?.[0]?.content?.parts;
+  if (!parts || !parts.length) return null;
+  const text = parts.map((part) => part.text).filter(Boolean).join('');
+  return text?.trim() || null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchGemini(prompt: string): Promise<GeminiResult> {
   if (!env.geminiApiKey) {
-    return null;
+    logger.warn('GEMINI_API_KEY ausente; usando fallback do Gemini.');
+    return { ok: false, type: 'missing_key' };
   }
 
   const model = env.geminiModel || DEFAULT_MODEL;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.geminiApiKey}`;
+  const endpoint = buildEndpoint(model);
+  const url = `${endpoint}?key=${env.geminiApiKey}`;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      }),
-    });
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify(buildRequestBody(prompt)),
+      });
 
-    if (!response.ok) {
-      const text = await response.text();
-      logger.warn('Gemini respondeu com erro', { status: response.status, body: text });
-      return null;
+      if (!response.ok) {
+        const bodyText = await response.text();
+        logger.warn('Gemini respondeu com erro', {
+          status: response.status,
+          statusText: response.statusText,
+          body: bodyText,
+          model,
+          endpoint,
+        });
+
+        if (response.status === 403 || response.status === 404) {
+          return { ok: false, type: 'auth' };
+        }
+
+        if (RETRYABLE_STATUS.has(response.status) && attempt < MAX_RETRIES) {
+          await sleep(300 * 2 ** (attempt - 1));
+          continue;
+        }
+
+        return { ok: false, type: 'other' };
+      }
+
+      const data = await response.json();
+      const text = extractTextFromResponse(data);
+      if (text) {
+        return { ok: true, text };
+      }
+
+      logger.warn('Resposta do Gemini sem texto', { model, endpoint });
+      return { ok: false, type: 'other' };
+    } catch (error) {
+      logger.warn('Erro ao consultar Gemini', { error, model, endpoint, attempt });
+      if (attempt < MAX_RETRIES) {
+        await sleep(300 * 2 ** (attempt - 1));
+        continue;
+      }
+      return { ok: false, type: 'other' };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const data = (await response.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return text?.trim() || null;
-  } catch (error) {
-    logger.error('Erro ao consultar Gemini', error);
-    return null;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  return { ok: false, type: 'other' };
 }
 
 function fallbackAnswer(question: string): string {
@@ -128,6 +187,14 @@ export async function generateGeminiAnswer({
     'Responda com 1 a 2 paragrafos curtos ou bullets.',
   ].join('\n');
 
-  const response = await fetchGemini(prompt);
-  return response ?? fallbackAnswer(question);
+  const result = await fetchGemini(prompt);
+  if (result.ok) {
+    return result.text;
+  }
+
+  if (result.type === 'auth') {
+    return AUTH_ERROR_MESSAGE;
+  }
+
+  return fallbackAnswer(question);
 }
