@@ -14,7 +14,7 @@ import { registerPlayerCommand } from './registerPlayer.js';
 import { rollCommand } from './roll.js';
 import { settitleCommand } from './settitle.js';
 import { sobreCommand } from './sobre.js';
-import { statsCommand } from './stats.js';
+import { statusCommand } from './status.js';
 import { steamCommand } from './steam.js';
 import { titleclearCommand } from './titleclear.js';
 
@@ -26,7 +26,7 @@ const commands = [
   ajudaCommand.data,
   rollCommand.data,
   historicoCommand.data,
-  statsCommand.data,
+  statusCommand.data,
   steamCommand.data,
   registerPlayerCommand.data,
   conquistasCommand.data,

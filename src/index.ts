@@ -13,9 +13,9 @@ import { registerPlayerCommand } from './discord/commands/registerPlayer.js';
 import { rollCommand } from './discord/commands/roll.js';
 import { settitleCommand } from './discord/commands/settitle.js';
 import { sobreCommand } from './discord/commands/sobre.js';
-import { statsCommand } from './discord/commands/stats.js';
 import { steamCommand } from './discord/commands/steam.js';
 import { titleclearCommand } from './discord/commands/titleclear.js';
+import { statusCommand } from './discord/commands/status.js';
 import { safeReply } from './utils/interactions.js';
 import { logError, logInfo } from './utils/logging.js';
 
@@ -37,8 +37,8 @@ const commandMap = {
   ajuda: ajudaCommand,
   roll: rollCommand,
   historico: historicoCommand,
-  stats: statsCommand,
   steam: steamCommand,
+  status: statusCommand,
   register: registerPlayerCommand,
   conquistas: conquistasCommand,
   nivel: nivelCommand,

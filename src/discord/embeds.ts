@@ -178,7 +178,7 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
         name: 'Historico & Estatisticas',
         value: safeText(
           '/historico user:<opcional> limite:<1..10>\n- Ultimas rolagens do usuario\n' +
-            '/stats\n- Resumo de rolagens do servidor',
+            '/status\n- Status do Gemini e resumo de rolagens do servidor',
           1024,
         ),
       },

@@ -1,7 +1,8 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { trackEvent } from '../../achievements/service.js';
-import { generateGeminiAnswer } from '../../services/gemini.js';
+import { generateGeminiAnswerWithMeta, type GeminiAnswerResult } from '../../services/gemini.js';
+import { bumpUsage } from '../../services/geminiUsageService.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro, getPlayerProfile } from '../../services/profileService.js';
 import { appendHistory, getHistory } from '../../services/storage.js';
@@ -15,6 +16,11 @@ import { buildAchievementUnlockEmbed, createSuziEmbed } from '../embeds.js';
 
 const EMOJI_BRAIN = '\u{1F9E0}';
 const EMOJI_SPARKLE = '\u2728';
+
+function shouldCountUsage(result: GeminiAnswerResult): boolean {
+  const countFailedRequests = process.env.COUNT_FAILED_REQUESTS !== 'false';
+  return result.usedGemini && (result.status === 'ok' || countFailedRequests);
+}
 
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
@@ -44,11 +50,16 @@ export const perguntaCommand = {
         const historyLines = history.map((h) => `${h.type}: ${h.content} -> ${h.response}`);
         const userProfile = getPlayerProfile(userId);
 
-        const response = await generateGeminiAnswer({
+        const geminiResult = await generateGeminiAnswerWithMeta({
           question,
           userProfile,
           userHistory: historyLines,
         });
+        const response = geminiResult.text;
+
+        if (shouldCountUsage(geminiResult)) {
+          bumpUsage({ userId, guildId: interaction.guildId });
+        }
 
         appendHistory(userId, { type: 'pergunta', content: question, response });
         appendProfileHistory(userId, {

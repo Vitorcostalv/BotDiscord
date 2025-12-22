@@ -11,7 +11,15 @@ type GeminiInput = {
 
 type GeminiResult =
   | { ok: true; text: string }
-  | { ok: false; type: 'auth' | 'other' | 'missing_key' };
+  | { ok: false; type: 'auth' | 'other' | 'missing_key' | 'rate_limit' };
+
+export type GeminiAnswerStatus = 'ok' | 'rate_limit' | 'auth' | 'error' | 'missing_key' | 'local';
+
+export type GeminiAnswerResult = {
+  text: string;
+  status: GeminiAnswerStatus;
+  usedGemini: boolean;
+};
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 const REQUEST_TIMEOUT_MS = 15000;
@@ -20,6 +28,7 @@ const RETRYABLE_STATUS = new Set([429, 500, 503]);
 const AUTH_ERROR_MESSAGE =
   '⚠️ Minha chave/modelo do Gemini parece invalida ou sem permissao. Verifique GEMINI_API_KEY e GEMINI_MODEL.';
 const MIN_API_KEY_LENGTH = 30;
+export const MIN_GEMINI_API_KEY_LENGTH = MIN_API_KEY_LENGTH;
 
 let debugKeyLogged = false;
 
@@ -165,6 +174,10 @@ async function fetchGemini(prompt: string): Promise<GeminiResult> {
           continue;
         }
 
+        if (response.status === 429) {
+          return { ok: false, type: 'rate_limit' };
+        }
+
         return { ok: false, type: 'other' };
       }
 
@@ -207,17 +220,21 @@ function fallbackAnswer(question: string): string {
   );
 }
 
-export async function generateGeminiAnswer({
+export async function generateGeminiAnswerWithMeta({
   question,
   userProfile,
   userHistory,
-}: GeminiInput): Promise<string> {
+}: GeminiInput): Promise<GeminiAnswerResult> {
   const diceExpression = extractDiceExpression(question);
   if (diceExpression) {
     const parsed = parseDice(diceExpression);
     if (!('error' in parsed)) {
       const { rolls, total } = rollDice(parsed.count, parsed.sides);
-      return formatRollOutput(`${parsed.count}d${parsed.sides}`, rolls, total);
+      return {
+        text: formatRollOutput(`${parsed.count}d${parsed.sides}`, rolls, total),
+        status: 'local',
+        usedGemini: false,
+      };
     }
   }
 
@@ -235,12 +252,29 @@ export async function generateGeminiAnswer({
 
   const result = await fetchGemini(prompt);
   if (result.ok) {
-    return result.text;
+    return { text: result.text, status: 'ok', usedGemini: true };
   }
 
   if (result.type === 'auth') {
-    return AUTH_ERROR_MESSAGE;
+    return { text: AUTH_ERROR_MESSAGE, status: 'auth', usedGemini: true };
   }
 
-  return fallbackAnswer(question);
+  if (result.type === 'missing_key') {
+    return { text: fallbackAnswer(question), status: 'missing_key', usedGemini: false };
+  }
+
+  if (result.type === 'rate_limit') {
+    return { text: fallbackAnswer(question), status: 'rate_limit', usedGemini: true };
+  }
+
+  return { text: fallbackAnswer(question), status: 'error', usedGemini: true };
+}
+
+export async function generateGeminiAnswer({
+  question,
+  userProfile,
+  userHistory,
+}: GeminiInput): Promise<string> {
+  const result = await generateGeminiAnswerWithMeta({ question, userProfile, userHistory });
+  return result.text;
 }
