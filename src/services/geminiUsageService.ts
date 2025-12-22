@@ -1,7 +1,7 @@
 import { join } from 'path';
 
-import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 import { MIN_GEMINI_API_KEY_LENGTH } from './gemini.js';
+import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
 type UsageEntry = {
   day: string;
