@@ -57,6 +57,7 @@ type ProfileExtras = {
   xp?: XpState;
   equippedTitle?: string | null;
   classTitle: string;
+  favoritesText?: string;
 };
 
 function safeText(text: string, maxLen: number): string {
@@ -171,6 +172,13 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
         ),
       },
       {
+        name: `${EMOJI.level} Avaliacoes`,
+        value: safeText(
+          '/review add|remove|view|my|top|favorite\n- Avaliacoes de jogos com ranking e favoritos',
+          1024,
+        ),
+      },
+      {
         name: `${EMOJI.dice} RPG`,
         value: safeText('/roll expressao:<NdM>\n- Rolagem de dados (ex: 2d20, 1d100)', 1024),
       },
@@ -272,6 +280,13 @@ export function buildProfileEmbed(
         text: 'Use /historico para ver rolagens - Use /perfil detalhado:true para ver tudo',
       });
 
+    if (extras.favoritesText !== undefined) {
+      compactEmbed.addFields({
+        name: `${EMOJI.level} Favoritos`,
+        value: safeText(extras.favoritesText, 1024),
+      });
+    }
+
     return compactEmbed;
   }
 
@@ -289,6 +304,13 @@ export function buildProfileEmbed(
       { name: 'Suzi XP', value: formatXp(extras.xp), inline: true },
     )
     .setFooter({ text: 'Suzi - Perfil do Player' });
+
+  if (extras.favoritesText !== undefined) {
+    embed.addFields({
+      name: `${EMOJI.level} Favoritos`,
+      value: safeText(extras.favoritesText, 1024),
+    });
+  }
 
   if (extras.achievements) {
     embed.addFields({

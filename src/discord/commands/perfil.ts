@@ -5,6 +5,7 @@ import { listAllAchievements, trackEvent, getUserAchievements } from '../../achi
 import { env } from '../../config/env.js';
 import { getHistory } from '../../services/historyService.js';
 import { getPlayerProfile } from '../../services/profileService.js';
+import { listUserReviews, type ReviewCategory } from '../../services/reviewService.js';
 import { getSteamLink, getCachedSummary, mapPersonaState } from '../../services/steamService.js';
 import { getTitleLabel, getAutoTitleForClass, getUserTitleState, unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { getUserXp } from '../../services/xpService.js';
@@ -14,6 +15,50 @@ import { logError, logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildMissingProfileEmbed, buildProfileEmbed } from '../embeds.js';
 
 const EMOJI_GAME = '\u{1F3AE}';
+const EMOJI_HEART = '\u{1F496}';
+const EMOJI_SKULL = '\u{1F480}';
+
+const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
+  AMEI: EMOJI_HEART,
+  JOGAVEL: EMOJI_GAME,
+  RUIM: EMOJI_SKULL,
+};
+
+function safeText(text: string, maxLen: number): string {
+  const normalized = text.trim();
+  if (!normalized) return '-';
+  if (normalized.length <= maxLen) return normalized;
+  const sliceEnd = Math.max(0, maxLen - 3);
+  return `${normalized.slice(0, sliceEnd).trimEnd()}...`;
+}
+
+function formatStars(value: number): string {
+  const clamped = Math.max(0, Math.min(5, Math.round(value)));
+  return `${'★'.repeat(clamped)}${'☆'.repeat(5 - clamped)}`;
+}
+
+function formatFavorites(guildId: string | null, userId: string): string {
+  if (!guildId) {
+    return 'Sem favoritos ainda. Use /review favorite';
+  }
+
+  const favorites = listUserReviews(guildId, userId, {
+    favoritesOnly: true,
+    order: 'stars',
+    limit: 3,
+  });
+
+  if (!favorites.length) {
+    return 'Sem favoritos ainda. Use /review favorite';
+  }
+
+  return favorites
+    .map((entry) => {
+      const label = `${CATEGORY_EMOJI[entry.review.category]} ${entry.review.category}`;
+      return `- ${safeText(entry.name, 40)} ${formatStars(entry.review.stars)} ${label}`;
+    })
+    .join('\n');
+}
 
 export const perfilCommand = {
   data: new SlashCommandBuilder()
@@ -56,6 +101,7 @@ export const perfilCommand = {
       const classTitle = getAutoTitleForClass(profile.className);
       const xp = getUserXp(target.id);
       const history = detailed ? getHistory(target.id, 3) : [];
+      const favoritesText = formatFavorites(interaction.guildId ?? null, target.id);
 
       const embed = buildProfileEmbed(
         target,
@@ -66,6 +112,7 @@ export const perfilCommand = {
           xp,
           equippedTitle,
           classTitle,
+          favoritesText,
         },
         detailed ? 'detailed' : 'compact',
       );

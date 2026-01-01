@@ -4,6 +4,7 @@
 - `/ping` - Latencia rapida.
 - `/jogo nome:<texto> plataforma:<opcional>` - Ajuda estruturada para um jogo.
 - `/pergunta pergunta:<texto>` - Perguntas sobre jogos com memoria curta.
+- `/review add|remove|view|my|top|favorite` - Avaliacoes de jogos com ranking e favoritos.
 - `/register nome_jogador:<texto> nome_personagem:<texto> classe:<texto> nivel:<1..99>` - Registra o player.
 - `/perfil user:<opcional>` - Mostra o perfil do player.
 - `/roll expressao:<NdM>` - Rolagem de dados (ex: `2d20`).
@@ -44,6 +45,25 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 - Configure `STEAM_API_KEY` no ambiente.
 - Comandos: `/steam link`, `/steam view`, `/steam refresh`, `/steam unlink`.
 - Observacao: jogo atual so aparece se o perfil e detalhes estiverem publicos na Steam.
+
+## Avaliacoes de Jogos
+- As avaliacoes ficam em `data/reviews.json` (por servidor/guild).
+- Nota de 1 a 5 estrelas, categoria AMEI/JOGAVEL/RUIM e opiniao curta (max 400).
+- Tags opcionais (max 5). Favoritos aparecem no `/perfil`.
+
+### Comandos /review
+- `/review add nome:<texto> estrelas:<1..5> categoria:<AMEI|JOGAVEL|RUIM> opiniao:<texto> plataforma:<opcional> tags:<CSV> favorito:<opcional>`
+- `/review remove nome:<texto>`
+- `/review view nome:<texto>`
+- `/review my categoria:<opcional> ordenar:<stars|recent>`
+- `/review top categoria:<opcional> min_avaliacoes:<opcional> limite:<opcional>`
+- `/review favorite nome:<texto>`
+
+### Exemplos
+- `/review add nome:"Baldur's Gate 3" estrelas:5 categoria:AMEI opiniao:"Insano." tags:"historia, combate" favorito:true`
+- `/review view nome:"Baldur's Gate 3"`
+- `/review top categoria:AMEI limite:10`
+- `/review favorite nome:"Baldur's Gate 3"`
 
 ## Troubleshooting (Catalogo de Erros)
 O catalogo completo fica em `src/errors/catalog.ts`.

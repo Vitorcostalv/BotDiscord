@@ -11,6 +11,7 @@ import { perfilCommand } from './perfil.js';
 import { perguntaCommand } from './pergunta.js';
 import { pingCommand } from './ping.js';
 import { registerPlayerCommand } from './registerPlayer.js';
+import { reviewCommand } from './review.js';
 import { rollCommand } from './roll.js';
 import { settitleCommand } from './settitle.js';
 import { sobreCommand } from './sobre.js';
@@ -31,6 +32,7 @@ const commands = [
   registerPlayerCommand.data,
   conquistasCommand.data,
   nivelCommand.data,
+  reviewCommand.data,
   settitleCommand.data,
   titleclearCommand.data,
   sobreCommand.data,

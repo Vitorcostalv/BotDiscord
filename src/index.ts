@@ -10,6 +10,7 @@ import { perguntaCommand } from './discord/commands/pergunta.js';
 import { pingCommand } from './discord/commands/ping.js';
 import { registerCommands } from './discord/commands/register.js';
 import { registerPlayerCommand } from './discord/commands/registerPlayer.js';
+import { reviewCommand } from './discord/commands/review.js';
 import { rollCommand } from './discord/commands/roll.js';
 import { settitleCommand } from './discord/commands/settitle.js';
 import { sobreCommand } from './discord/commands/sobre.js';
@@ -42,6 +43,7 @@ const commandMap = {
   register: registerPlayerCommand,
   conquistas: conquistasCommand,
   nivel: nivelCommand,
+  review: reviewCommand,
   settitle: settitleCommand,
   titleclear: titleclearCommand,
   sobre: sobreCommand,
