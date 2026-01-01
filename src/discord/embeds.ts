@@ -60,8 +60,8 @@ type ProfileExtras = {
   favoritesText?: string;
 };
 
-function safeText(text: string, maxLen: number): string {
-  const normalized = text.trim();
+function safeText(text: string | undefined | null, maxLen: number): string {
+  const normalized = text?.trim() ?? '';
   if (!normalized) return '-';
   if (normalized.length <= maxLen) return normalized;
   const sliceEnd = Math.max(0, maxLen - 3);
@@ -75,8 +75,8 @@ function normalizeClassName(value: string): string {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-function getClassEmoji(className: string): string {
-  const normalized = normalizeClassName(className);
+function getClassEmoji(className: string | undefined | null): string {
+  const normalized = normalizeClassName(className ?? '');
   return CLASS_EMOJI[normalized] ?? EMOJI.class;
 }
 
@@ -193,11 +193,14 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
       {
         name: `${EMOJI.profile} Perfil do Player`,
         value: safeText(
-          '/register\n- Registra seu jogador\n' +
-            '/perfil user:<opcional> detalhado:<opcional>\n- Mostra o perfil (compacto ou detalhado)\n' +
-            '/nivel nivel:<1..99> user:<opcional>\n- Atualiza o nivel do personagem\n' +
-            '/settitle title:<titulo>\n- Equipa um titulo desbloqueado\n' +
-            '/titleclear\n- Remove o titulo equipado\n' +
+          '/register nome_jogador:<texto> nivel:<opcional>\n- Registra seu perfil\n' +
+            '/perfil user:<opcional>\n- Mostra o perfil com abas\n' +
+            '/perfil banner set url:<texto>\n- Define o banner do perfil\n' +
+            '/perfil banner clear\n- Remove o banner custom\n' +
+            '/nivel nivel:<1..99> user:<opcional>\n- Atualiza o nivel do usuario\n' +
+            '/title add titulo:<texto>\n- Equipa um titulo desbloqueado\n' +
+            '/title remove\n- Remove o titulo equipado\n' +
+            '(aliases: /settitle, /titleclear)\n' +
             '/conquistas\n- Lista suas conquistas',
           1024,
         ),
@@ -218,12 +221,11 @@ export function buildRegisterSuccessEmbed(user: User, player: PlayerProfile): Em
     .setDescription(`Bem-vindo a aventura, ${safeText(player.playerName, 256)}!`)
     .setThumbnail(user.displayAvatarURL({ size: 128 }))
     .addFields(
-      { name: 'Personagem', value: safeText(player.characterName, 1024), inline: true },
-      { name: `${EMOJI.class} Classe`, value: safeText(player.className, 1024), inline: true },
+      { name: 'Jogador', value: safeText(player.playerName, 1024), inline: true },
       { name: `${EMOJI.level} Nivel inicial`, value: String(player.level), inline: true },
       {
         name: 'Proximos passos',
-        value: safeText('Use /perfil para ver seu perfil\nUse /nivel para evoluir seu personagem', 1024),
+        value: safeText('Use /perfil para ver seu perfil\nUse /nivel para evoluir seu nivel', 1024),
       },
     )
     .setFooter({ text: 'Suzi - Registro de Player' });

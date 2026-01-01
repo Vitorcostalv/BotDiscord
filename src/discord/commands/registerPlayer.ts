@@ -22,19 +22,15 @@ const EMOJI_SPARKLE = '\u2728';
 export const registerPlayerCommand = {
   data: new SlashCommandBuilder()
     .setName('register')
-    .setDescription('Registre seu player e personagem')
+    .setDescription('Registre seu perfil na Suzi')
     .addStringOption((option) =>
       option.setName('nome_jogador').setDescription('Nome do jogador').setRequired(true),
     )
-    .addStringOption((option) =>
-      option.setName('nome_personagem').setDescription('Nome do personagem').setRequired(true),
-    )
-    .addStringOption((option) => option.setName('classe').setDescription('Classe do personagem').setRequired(true))
     .addIntegerOption((option) =>
       option
         .setName('nivel')
-        .setDescription('Nivel do personagem (1 a 99)')
-        .setRequired(true)
+        .setDescription('Nivel do usuario (1 a 99)')
+        .setRequired(false)
         .setMinValue(1)
         .setMaxValue(99),
     )
@@ -70,13 +66,11 @@ export const registerPlayerCommand = {
       }
 
       const playerName = interaction.options.getString('nome_jogador', true);
-      const characterName = interaction.options.getString('nome_personagem', true);
-      const className = interaction.options.getString('classe', true);
-      const level = interaction.options.getInteger('nivel', true);
+      const level = interaction.options.getInteger('nivel') ?? 1;
 
       const profile = upsertPlayerProfile(
         targetUser.id,
-        { playerName, characterName, className, level },
+        { playerName, level },
         interaction.user.id,
       );
       appendProfileHistory(targetUser.id, {

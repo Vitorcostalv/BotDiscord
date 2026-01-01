@@ -16,6 +16,7 @@ import { settitleCommand } from './discord/commands/settitle.js';
 import { sobreCommand } from './discord/commands/sobre.js';
 import { statusCommand } from './discord/commands/status.js';
 import { steamCommand } from './discord/commands/steam.js';
+import { titleCommand } from './discord/commands/title.js';
 import { titleclearCommand } from './discord/commands/titleclear.js';
 import { safeReply } from './utils/interactions.js';
 import { logError, logInfo } from './utils/logging.js';
@@ -45,6 +46,7 @@ const commandMap = {
   nivel: nivelCommand,
   review: reviewCommand,
   settitle: settitleCommand,
+  title: titleCommand,
   titleclear: titleclearCommand,
   sobre: sobreCommand,
 };

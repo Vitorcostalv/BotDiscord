@@ -5,12 +5,11 @@
 - `/jogo nome:<texto> plataforma:<opcional>` - Ajuda estruturada para um jogo.
 - `/pergunta pergunta:<texto>` - Perguntas sobre jogos com memoria curta.
 - `/review add|remove|view|my|top|favorite` - Avaliacoes de jogos com ranking e favoritos.
-- `/register nome_jogador:<texto> nome_personagem:<texto> classe:<texto> nivel:<1..99>` - Registra o player.
-- `/perfil user:<opcional>` - Mostra o perfil do player.
+- `/register nome_jogador:<texto> nivel:<opcional>` - Registra o perfil do jogador.
+- `/perfil user:<opcional>` - Mostra o perfil do player com paginas.
 - `/roll expressao:<NdM>` - Rolagem de dados (ex: `2d20`).
-- `/nivel nivel:<1..99> user:<opcional>` - Atualiza o nivel do personagem.
-- `/settitle title:<titulo>` - Equipa um titulo desbloqueado.
-- `/titleclear` - Remove o titulo equipado.
+- `/nivel nivel:<1..99> user:<opcional>` - Atualiza o nivel do usuario.
+- `/title add|remove` - Gerencia titulos desbloqueados (aliases: `/settitle`, `/titleclear`).
 - `/steam link|view|refresh|unlink` - Vincula e consulta perfil Steam.
 - `/sobre` - Lore da Suzi.
 - `/conquistas` - Lista conquistas do player.
@@ -24,7 +23,8 @@
 - `ALLOW_ADMIN_EDIT` (opcional, `true` libera /nivel em outros users)
 - `STEAM_API_KEY` (obrigatorio para recursos Steam)
 - `LLM_API_KEY` (opcional, stub de LLM legacy)
-- `PROFILE_BANNER_URL` (opcional, banner no /perfil)
+- `DEFAULT_PROFILE_BANNER_URL` (opcional, banner padrao no /perfil)
+- `PROFILE_BANNER_URL` (opcional, legado para banner no /perfil)
 
 Notas:
 - `.env.example` e apenas referencia. O bot nao carrega esse arquivo.
@@ -68,11 +68,15 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 - `/review favorite nome:"Baldur's Gate 3"`
 
 ## Perfil com paginas
-- O `/perfil` agora abre um painel com botoes: Resumo, Reviews, Historico e Fechar.
-- Pagina Resumo mostra personagem, titulo, XP, conquistas e favoritos.
-- Pagina Reviews mostra top 5 reviews do usuario e CTA para `/review my`.
+- O `/perfil` abre um painel com botoes: Perfil, Conquistas, Historico, Reviews e Fechar.
+- Pagina Perfil mostra progresso (nivel + XP) e favoritos.
+- Pagina Conquistas lista conquistas desbloqueadas.
 - Pagina Historico lista as ultimas 5 rolagens.
-- Banner opcional via `PROFILE_BANNER_URL`.
+- Pagina Reviews mostra top 5 reviews e total do usuario.
+- Banner padrao via `DEFAULT_PROFILE_BANNER_URL` (ou `PROFILE_BANNER_URL` legado).
+- Banner custom por usuario:
+  - `/perfil banner set url:<texto>`
+  - `/perfil banner clear`
 
 ## Troubleshooting (Catalogo de Erros)
 O catalogo completo fica em `src/errors/catalog.ts`.

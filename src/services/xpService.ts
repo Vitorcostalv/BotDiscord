@@ -28,6 +28,13 @@ type AwardXpResult = {
   state: XpState;
 };
 
+export type XpProgress = {
+  level: number;
+  current: number;
+  needed: number;
+  percent: number;
+};
+
 const XP_PATH = join(process.cwd(), 'data', 'xp.json');
 const DEFAULT_STATE: XpState = {
   xp: 0,
@@ -54,7 +61,7 @@ function addDaysKey(key: string, days: number): string {
   return todayKey(date.getTime());
 }
 
-function xpForNextLevel(level: number): number {
+export function xpForNextLevel(level: number): number {
   const growth = Math.max(0, level - 1);
   return 100 + growth * 20;
 }
@@ -104,6 +111,22 @@ function getState(store: XpStore, userId: string): XpState {
       lastDay: existing.streak?.lastDay ?? '',
     },
   };
+}
+
+function totalXpForLevel(level: number): number {
+  let total = 0;
+  for (let current = 1; current < level; current += 1) {
+    total += xpForNextLevel(current);
+  }
+  return total;
+}
+
+export function getXpProgress(state: XpState): XpProgress {
+  const base = totalXpForLevel(state.level);
+  const needed = xpForNextLevel(state.level);
+  const current = Math.max(0, state.xp - base);
+  const percent = needed > 0 ? Math.min(100, Math.round((current / needed) * 100)) : 0;
+  return { level: state.level, current, needed, percent };
 }
 
 export function getUserXp(userId: string): XpState {

@@ -47,12 +47,14 @@ function buildProfileSummary(profile?: PlayerProfile | null): string {
     return 'Perfil do player: nao registrado.';
   }
 
-  return [
-    `Perfil do player: ${profile.playerName}.`,
-    `Personagem: ${profile.characterName}.`,
-    `Classe: ${profile.className}.`,
-    `Nivel: ${profile.level}.`,
-  ].join(' ');
+  const parts = [`Perfil do player: ${profile.playerName}.`, `Nivel: ${profile.level}.`];
+  if (profile.characterName) {
+    parts.push(`Personagem: ${profile.characterName}.`);
+  }
+  if (profile.className) {
+    parts.push(`Classe: ${profile.className}.`);
+  }
+  return parts.join(' ');
 }
 
 function extractDiceExpression(text: string): string | null {

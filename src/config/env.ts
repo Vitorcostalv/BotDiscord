@@ -16,6 +16,7 @@ export const env = {
   roleMasterId: process.env.ROLE_MASTER_ID ?? '',
   steamApiKey: process.env.STEAM_API_KEY ?? '',
   profileBannerUrl: process.env.PROFILE_BANNER_URL ?? '',
+  defaultProfileBannerUrl: process.env.DEFAULT_PROFILE_BANNER_URL ?? '',
 };
 
 export function assertEnv(): void {

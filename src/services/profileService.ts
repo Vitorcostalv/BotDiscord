@@ -6,9 +6,10 @@ import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
 export type PlayerProfile = {
   playerName: string;
-  characterName: string;
-  className: string;
+  characterName?: string;
+  className?: string;
   level: number;
+  bannerUrl?: string | null;
   aboutMe?: string;
   createdBy: string;
   createdAt: number;
@@ -20,8 +21,6 @@ type PlayerStore = Record<string, PlayerProfile>;
 
 type PlayerInput = {
   playerName: string;
-  characterName: string;
-  className: string;
   level: number;
 };
 
@@ -88,9 +87,10 @@ export function upsertPlayerProfile(userId: string, data: PlayerInput, actorId?:
   const updatedBy = actorId ?? userId;
   const profile: PlayerProfile = {
     playerName: data.playerName,
-    characterName: data.characterName,
-    className: data.className,
     level: data.level,
+    characterName: existing?.characterName,
+    className: existing?.className,
+    bannerUrl: existing?.bannerUrl ?? null,
     aboutMe: existing?.aboutMe,
     createdBy,
     createdAt,
@@ -111,6 +111,40 @@ export function updatePlayerLevel(userId: string, level: number, actorId?: strin
   const updated: PlayerProfile = {
     ...existing,
     level,
+    updatedAt: Date.now(),
+    updatedBy: actorId ?? existing.updatedBy ?? userId,
+  };
+  store[userId] = updated;
+  writeJsonAtomic(PLAYERS_PATH, store);
+  return updated;
+}
+
+export function setProfileBanner(userId: string, bannerUrl: string, actorId?: string): PlayerProfile | null {
+  const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
+  const existing = store[userId];
+  if (!existing) {
+    return null;
+  }
+  const updated: PlayerProfile = {
+    ...existing,
+    bannerUrl,
+    updatedAt: Date.now(),
+    updatedBy: actorId ?? existing.updatedBy ?? userId,
+  };
+  store[userId] = updated;
+  writeJsonAtomic(PLAYERS_PATH, store);
+  return updated;
+}
+
+export function clearProfileBanner(userId: string, actorId?: string): PlayerProfile | null {
+  const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
+  const existing = store[userId];
+  if (!existing) {
+    return null;
+  }
+  const updated: PlayerProfile = {
+    ...existing,
+    bannerUrl: null,
     updatedAt: Date.now(),
     updatedBy: actorId ?? existing.updatedBy ?? userId,
   };

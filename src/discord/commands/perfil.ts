@@ -13,22 +13,24 @@ import type { AchievementDefinition } from '../../achievements/definitions.js';
 import { listAllAchievements, trackEvent, getUserAchievements } from '../../achievements/service.js';
 import { env } from '../../config/env.js';
 import { getUserRolls } from '../../services/rollHistoryService.js';
-import { getPlayerProfile } from '../../services/profileService.js';
+import {
+  clearProfileBanner,
+  getPlayerProfile,
+  setProfileBanner,
+} from '../../services/profileService.js';
 import { getUserReviewCount, listUserReviews, type ReviewCategory } from '../../services/reviewService.js';
-import { getSteamLink, getCachedSummary, mapPersonaState } from '../../services/steamService.js';
-import { getTitleLabel, getAutoTitleForClass, getUserTitleState, unlockTitlesFromAchievements } from '../../services/titleService.js';
-import { getUserXp } from '../../services/xpService.js';
+import { unlockTitlesFromAchievements } from '../../services/titleService.js';
+import { getUserXp, getXpProgress } from '../../services/xpService.js';
 import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logError, logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildMissingProfileEmbed, createSuziEmbed } from '../embeds.js';
 
-const EMOJI_GAME = '\u{1F3AE}';
 const EMOJI_HEART = '\u{1F496}';
+const EMOJI_GAME = '\u{1F3AE}';
 const EMOJI_SKULL = '\u{1F480}';
 const EMOJI_SCROLL = '\u{1F4DC}';
 const EMOJI_TROPHY = '\u{1F3C6}';
-const EMOJI_STAR = '\u2B50';
 
 const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
   AMEI: EMOJI_HEART,
@@ -36,12 +38,11 @@ const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
   RUIM: EMOJI_SKULL,
 };
 
-type ProfilePage = 'summary' | 'reviews' | 'history';
+type ProfilePage = 'profile' | 'achievements' | 'history' | 'reviews';
+type BannerAction = 'set' | 'clear';
 
-type SteamField = {
-  title: string;
-  value: string;
-};
+const BANNER_ALLOWED_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+const PROGRESS_BAR_SIZE = 10;
 
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
@@ -56,82 +57,53 @@ function formatStars(value: number): string {
   return `${'★'.repeat(clamped)}${'☆'.repeat(5 - clamped)}`;
 }
 
-function formatTitle(equippedTitle: string | null | undefined, classTitle: string): string {
-  if (equippedTitle) {
-    return `Equipado: ${safeText(equippedTitle, 256)}\nAutomatico: ${safeText(classTitle, 256)}`;
-  }
-  return `Automatico: ${safeText(classTitle, 256)}`;
+function buildProgressBar(percent: number): string {
+  const filled = Math.min(PROGRESS_BAR_SIZE, Math.max(0, Math.round((percent / 100) * PROGRESS_BAR_SIZE)));
+  return `${'█'.repeat(filled)}${'░'.repeat(PROGRESS_BAR_SIZE - filled)}`;
 }
 
-function formatXp(xp: { xp: number; level: number; streak: { days: number } }): string {
-  const streak = xp.streak.days > 1 ? `\nStreak: ${xp.streak.days} dias` : '';
-  return `Nivel: ${xp.level}\nXP: ${xp.xp}${streak}`;
+function resolveBanner(profileBanner?: string | null): string | null {
+  const custom = profileBanner?.trim();
+  if (custom) return custom;
+  const fallback = env.defaultProfileBannerUrl || env.profileBannerUrl;
+  return fallback ? fallback.trim() : null;
 }
 
-function formatAchievements(total: number, recent: AchievementDefinition[]): string {
-  const recentLines = recent.slice(0, 3).map((item) => `${item.emoji} ${item.name}`);
-  const lines = [`Total: ${total}`];
-  if (recentLines.length) {
-    lines.push(...recentLines);
-  } else {
-    lines.push('Nenhuma recente.');
+function validateBannerUrl(input: string): { ok: true; url: string } | { ok: false; message: string } {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    return { ok: false, message: 'URL invalida. Use um link http/https.' };
   }
-  return safeText(lines.join('\n'), 1024);
-}
 
-function formatFavorites(
-  favorites: Array<{ name: string; stars: number; category: ReviewCategory }>,
-  canShow: boolean,
-): string {
-  if (!canShow) {
-    return 'Use /perfil em um servidor para ver seus favoritos.';
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { ok: false, message: 'Use um link http/https valido.' };
   }
-  if (!favorites.length) {
-    return 'Sem favoritos ainda. Use /review favorite.';
-  }
-  return favorites
-    .map((entry) => `- ${safeText(entry.name, 40)} ${formatStars(entry.stars)} ${CATEGORY_EMOJI[entry.category]} ${entry.category}`)
-    .join('\n');
-}
 
-function formatTopReviews(
-  reviews: Array<{ name: string; stars: number; category: ReviewCategory }>,
-  canShow: boolean,
-): string {
-  if (!canShow) {
-    return 'Use /perfil em um servidor para ver suas reviews.';
+  const pathname = url.pathname.toLowerCase();
+  const hasExtension = BANNER_ALLOWED_EXT.some((ext) => pathname.endsWith(ext));
+  if (!hasExtension) {
+    return {
+      ok: false,
+      message: 'Use um link direto para imagem (.png, .jpg, .gif, .webp).',
+    };
   }
-  if (!reviews.length) {
-    return 'Sem reviews ainda.';
-  }
-  return reviews
-    .map((entry) => `- ${safeText(entry.name, 40)} ${formatStars(entry.stars)} ${CATEGORY_EMOJI[entry.category]} ${entry.category}`)
-    .join('\n');
-}
 
-function formatRollHistory(rolls: Array<{ ts: number; expr: string; total: number; min: number; max: number }>): string {
-  if (!rolls.length) {
-    return 'Sem rolagens ainda.';
-  }
-  return rolls
-    .map((entry) => {
-      const time = `<t:${Math.floor(entry.ts / 1000)}:R>`;
-      return `- ${time} - \`${entry.expr}\` -> total ${entry.total} (min ${entry.min}, max ${entry.max})`;
-    })
-    .join('\n');
+  return { ok: true, url: url.toString() };
 }
 
 function buildProfileButtons(active: ProfilePage, disabled = false): ActionRowBuilder<ButtonBuilder> {
-  const summary = new ButtonBuilder()
-    .setCustomId('perfil:summary')
-    .setLabel('Resumo')
-    .setStyle(active === 'summary' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+  const profile = new ButtonBuilder()
+    .setCustomId('perfil:profile')
+    .setLabel('Perfil')
+    .setStyle(active === 'profile' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     .setDisabled(disabled);
 
-  const reviews = new ButtonBuilder()
-    .setCustomId('perfil:reviews')
-    .setLabel('Reviews')
-    .setStyle(active === 'reviews' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+  const achievements = new ButtonBuilder()
+    .setCustomId('perfil:achievements')
+    .setLabel('Conquistas')
+    .setStyle(active === 'achievements' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     .setDisabled(disabled);
 
   const history = new ButtonBuilder()
@@ -140,75 +112,77 @@ function buildProfileButtons(active: ProfilePage, disabled = false): ActionRowBu
     .setStyle(active === 'history' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     .setDisabled(disabled);
 
+  const reviews = new ButtonBuilder()
+    .setCustomId('perfil:reviews')
+    .setLabel('Reviews')
+    .setStyle(active === 'reviews' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+    .setDisabled(disabled);
+
   const close = new ButtonBuilder()
     .setCustomId('perfil:close')
     .setLabel('Fechar')
     .setStyle(ButtonStyle.Danger)
     .setDisabled(disabled);
 
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(summary, reviews, history, close);
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(profile, achievements, history, reviews, close);
 }
 
 function resolvePage(customId: string): ProfilePage | null {
-  if (customId === 'perfil:summary') return 'summary';
-  if (customId === 'perfil:reviews') return 'reviews';
+  if (customId === 'perfil:profile') return 'profile';
+  if (customId === 'perfil:achievements') return 'achievements';
   if (customId === 'perfil:history') return 'history';
+  if (customId === 'perfil:reviews') return 'reviews';
   return null;
 }
 
-function applyBanner(embed: ReturnType<typeof createSuziEmbed>): void {
-  if (env.profileBannerUrl) {
-    embed.setImage(env.profileBannerUrl);
+function formatFavorites(
+  items: Array<{ name: string; stars: number; category: ReviewCategory }>,
+  canShow: boolean,
+): string {
+  if (!canShow) {
+    return 'Use /perfil em um servidor para ver favoritos.';
   }
+  if (!items.length) {
+    return 'Sem favoritos ainda.';
+  }
+  return items
+    .map((entry) => `- ${safeText(entry.name, 40)} ${formatStars(entry.stars)} ${CATEGORY_EMOJI[entry.category]} ${entry.category}`)
+    .join('\n');
 }
 
-async function buildSteamField(targetId: string, detailed: boolean): Promise<SteamField | null> {
-  const link = getSteamLink(targetId);
-  if (!link) return null;
-
-  if (!env.steamApiKey) {
-    return {
-      title: `${EMOJI_GAME} Steam`,
-      value: 'Recursos Steam desabilitados. Configure STEAM_API_KEY.',
-    };
+function formatAchievements(total: number, unlocked: AchievementDefinition[]): string {
+  if (!unlocked.length) {
+    return 'Nenhuma conquista desbloqueada ainda.';
   }
+  const lines = unlocked.map((item) => `${item.emoji} ${item.name}`);
+  return safeText(lines.join('\n'), 1024);
+}
 
-  const summaryResult = await getCachedSummary(link.steamId64);
-  if (!summaryResult.ok) {
-    const message =
-      summaryResult.reason === 'NOT_FOUND'
-        ? 'Perfil privado ou SteamID invalido.'
-        : 'Steam indisponivel agora.';
-    return {
-      title: `${EMOJI_GAME} Steam`,
-      value: message,
-    };
+function formatRollHistory(rolls: Array<{ ts: number; expr: string; total: number; min: number; max: number }>): string {
+  if (!rolls.length) {
+    return 'Sem rolagens registradas ainda.';
   }
+  return rolls
+    .map((entry) => {
+      const time = `<t:${Math.floor(entry.ts / 1000)}:R>`;
+      return `• ${time} — \`${entry.expr}\` → total ${entry.total} (min ${entry.min}, max ${entry.max})`;
+    })
+    .join('\n');
+}
 
-  const summary = summaryResult.summary;
-  const status = mapPersonaState(summary.personastate);
-  const game = summary.gameextrainfo ? `${EMOJI_GAME} ${summary.gameextrainfo}` : '-';
-
-  if (!detailed) {
-    return {
-      title: `${EMOJI_GAME} Steam`,
-      value: `Nick: ${summary.personaname}\nStatus: ${status}\nJogando agora: ${game}`,
-    };
+function formatReviewList(
+  items: Array<{ name: string; stars: number; category: ReviewCategory }>,
+  canShow: boolean,
+): string {
+  if (!canShow) {
+    return 'Use /perfil em um servidor para ver suas reviews.';
   }
-
-  const last = summary.lastlogoff ? `<t:${summary.lastlogoff}:R>` : '-';
-  const lines = [
-    `Nick: ${summary.personaname}`,
-    `Status: ${status}`,
-    `Jogando agora: ${game}`,
-    `Ultimo online: ${last}`,
-    `Link: ${summary.profileurl || '-'}`,
-  ];
-  if (!summary.gameextrainfo) {
-    lines.push('Obs: jogo atual so aparece se o perfil e detalhes estiverem publicos na Steam.');
+  if (!items.length) {
+    return 'Sem reviews ainda. Use /review add';
   }
-
-  return { title: `${EMOJI_GAME} Steam`, value: lines.join('\n') };
+  return items
+    .map((entry, index) => `${index + 1}) ${safeText(entry.name, 40)} — ${formatStars(entry.stars)} (${entry.category})`)
+    .join('\n');
 }
 
 export const perfilCommand = {
@@ -218,6 +192,19 @@ export const perfilCommand = {
     .addUserOption((option) => option.setName('user').setDescription('Jogador alvo').setRequired(false))
     .addBooleanOption((option) =>
       option.setName('detalhado').setDescription('Mostra informacoes completas').setRequired(false),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('banner')
+        .setDescription('Ajusta o banner do perfil')
+        .setRequired(false)
+        .addChoices(
+          { name: 'set', value: 'set' },
+          { name: 'clear', value: 'clear' },
+        ),
+    )
+    .addStringOption((option) =>
+      option.setName('url').setDescription('URL do banner (http/https)').setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
@@ -226,7 +213,8 @@ export const perfilCommand = {
     }
 
     const target = interaction.options.getUser('user') ?? interaction.user;
-    const detailed = interaction.options.getBoolean('detalhado') ?? false;
+    const bannerAction = interaction.options.getString('banner') as BannerAction | null;
+    const bannerUrl = interaction.options.getString('url');
 
     try {
       const profile = getPlayerProfile(target.id);
@@ -236,21 +224,70 @@ export const perfilCommand = {
         return;
       }
 
-      const achievements = getUserAchievements(target.id);
+      if (bannerAction) {
+        if (target.id !== interaction.user.id) {
+          const embed = createSuziEmbed('warning')
+            .setTitle('Banner indisponivel')
+            .setDescription('Voce so pode editar o seu proprio banner.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
+        if (bannerAction === 'set') {
+          if (!bannerUrl) {
+            const embed = createSuziEmbed('warning')
+              .setTitle('Informe o banner')
+              .setDescription('Use /perfil banner:set url:<link para imagem>.');
+            await safeRespond(interaction, { embeds: [embed] });
+            return;
+          }
+          const validation = validateBannerUrl(bannerUrl);
+          if (!validation.ok) {
+            const embed = createSuziEmbed('warning')
+              .setTitle('URL invalida')
+              .setDescription(validation.message);
+            await safeRespond(interaction, { embeds: [embed] });
+            return;
+          }
+          const updated = setProfileBanner(interaction.user.id, validation.url, interaction.user.id);
+          if (!updated) {
+            const embed = createSuziEmbed('warning')
+              .setTitle('Nao consegui salvar')
+              .setDescription('Registre seu perfil com /register antes de ajustar o banner.');
+            await safeRespond(interaction, { embeds: [embed] });
+            return;
+          }
+          const embed = createSuziEmbed('success')
+            .setTitle('Banner atualizado')
+            .setDescription('Seu banner foi salvo.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
+        if (bannerAction === 'clear') {
+          const updated = clearProfileBanner(interaction.user.id, interaction.user.id);
+          if (!updated) {
+            const embed = createSuziEmbed('warning')
+              .setTitle('Nao consegui remover')
+              .setDescription('Registre seu perfil com /register antes de ajustar o banner.');
+            await safeRespond(interaction, { embeds: [embed] });
+            return;
+          }
+          const embed = createSuziEmbed('success')
+            .setTitle('Banner removido')
+            .setDescription('Voltando para o banner padrao.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+      }
+
+      const achievementsState = getUserAchievements(target.id);
       const definitions = listAllAchievements();
-      const definitionMap = new Map(definitions.map((definition) => [definition.id, definition]));
+      const unlockedMap = new Map(achievementsState.unlockedList.map((entry) => [entry.id, entry.unlockedAt]));
+      const unlocked = definitions.filter((definition) => unlockedMap.has(definition.id));
 
-      const recent = achievements.unlockedList
-        .slice()
-        .sort((a, b) => b.unlockedAt - a.unlockedAt)
-        .map((entry) => definitionMap.get(entry.id))
-        .filter((definition): definition is AchievementDefinition => Boolean(definition))
-        .slice(0, 3);
-
-      const titles = getUserTitleState(target.id);
-      const equippedTitle = titles.equipped ? getTitleLabel(titles.equipped) : null;
-      const classTitle = getAutoTitleForClass(profile.className);
-      const xp = getUserXp(target.id);
+      const xpState = getUserXp(target.id);
+      const progress = getXpProgress(xpState);
 
       const guildId = interaction.guildId;
       const canShowReviews = Boolean(guildId);
@@ -274,98 +311,87 @@ export const perfilCommand = {
       }));
 
       const rolls = getUserRolls(target.id, 5);
-      const steamField = await buildSteamField(target.id, detailed);
-
       const displayName = target.globalName ?? target.username;
-      const aboutMe = profile.aboutMe?.trim();
-      const aboutText = aboutMe ? safeText(aboutMe, 400) : 'Sem bio por enquanto.';
+      const banner = resolveBanner(profile.bannerUrl);
 
-      const buildSummaryEmbed = () => {
+      const buildProfileEmbed = () => {
         const embed = createSuziEmbed('primary')
-          .setTitle(`Perfil de ${displayName}`)
-          .setDescription('Resumo do player')
+          .setTitle(displayName)
           .setThumbnail(target.displayAvatarURL({ size: 128 }))
           .addFields(
-            { name: 'Sobre mim', value: safeText(aboutText, 1024) },
             {
-              name: 'Personagem',
-              value: safeText(
-                `Nome: ${profile.characterName}\nClasse: ${profile.className}\nNivel: ${profile.level}`,
-                1024,
-              ),
-              inline: true,
+              name: '✨ Progresso com a Suzi',
+              value: `Nivel ${progress.level}\nXP ${progress.current}/${progress.needed} (${progress.percent}%)\n${buildProgressBar(progress.percent)}`,
             },
             {
-              name: 'Titulo',
-              value: formatTitle(equippedTitle, classTitle),
-              inline: true,
-            },
-            {
-              name: 'Suzi XP',
-              value: formatXp(xp),
-              inline: true,
-            },
-            {
-              name: `${EMOJI_TROPHY} Conquistas`,
-              value: formatAchievements(achievements.unlockedList.length, recent),
-            },
-            {
-              name: `${EMOJI_STAR} Favoritos`,
+              name: '⭐ Favoritos',
               value: formatFavorites(favoriteEntries, canShowReviews),
             },
           )
-          .setFooter({ text: 'Pagina 1/3 · Resumo' });
+          .setFooter({ text: 'Pagina 1/4 · Perfil' });
 
-        if (steamField) {
-          embed.addFields({ name: steamField.title, value: steamField.value });
+        if (banner) {
+          embed.setImage(banner);
         }
 
-        applyBanner(embed);
         return embed;
       };
 
-      const buildReviewsEmbed = () => {
+      const buildAchievementsEmbed = () => {
         const embed = createSuziEmbed('accent')
-          .setTitle(`Reviews de ${displayName}`)
-          .setDescription(
-            canShowReviews
-              ? `Total de reviews: ${totalReviews}`
-              : 'Use /perfil em um servidor para ver reviews.',
-          )
+          .setTitle('🏆 Conquistas')
           .setThumbnail(target.displayAvatarURL({ size: 128 }))
+          .addFields({ name: 'Total de conquistas', value: String(unlocked.length), inline: true })
           .addFields({
-            name: 'Top 5 jogos',
-            value: formatTopReviews(reviewEntries, canShowReviews),
+            name: `${EMOJI_TROPHY} Desbloqueadas`,
+            value: formatAchievements(unlocked.length, unlocked),
           })
-          .addFields({ name: 'Ver tudo', value: 'Use /review my para ver tudo' })
-          .setFooter({ text: 'Pagina 2/3 · Reviews' });
+          .setFooter({ text: 'Pagina 2/4 · Conquistas' });
 
-        applyBanner(embed);
+        if (banner) {
+          embed.setImage(banner);
+        }
+
         return embed;
       };
 
       const buildHistoryEmbed = () => {
         const embed = createSuziEmbed('dark')
-          .setTitle(`Historico de ${displayName}`)
-          .setDescription('Ultimas 5 rolagens do /roll')
+          .setTitle('📜 Historico')
           .setThumbnail(target.displayAvatarURL({ size: 128 }))
-          .addFields({
-            name: `${EMOJI_SCROLL} Rolagens`,
-            value: formatRollHistory(rolls),
-          })
-          .setFooter({ text: 'Pagina 3/3 · Historico' });
+          .addFields({ name: `${EMOJI_SCROLL} Ultimas rolagens`, value: formatRollHistory(rolls) })
+          .setFooter({ text: 'Pagina 3/4 · Historico' });
 
-        applyBanner(embed);
+        if (banner) {
+          embed.setImage(banner);
+        }
+
+        return embed;
+      };
+
+      const buildReviewsEmbed = () => {
+        const embed = createSuziEmbed('primary')
+          .setTitle('⭐ Reviews')
+          .setThumbnail(target.displayAvatarURL({ size: 128 }))
+          .setDescription(canShowReviews ? `Total de reviews: ${totalReviews}` : 'Sem reviews para mostrar aqui.')
+          .addFields({ name: 'Top 5 jogos', value: formatReviewList(reviewEntries, canShowReviews) })
+          .setFooter({ text: 'Pagina 4/4 · Reviews' });
+
+        if (banner) {
+          embed.setImage(banner);
+        }
+
         return embed;
       };
 
       const pageBuilders: Record<ProfilePage, () => ReturnType<typeof createSuziEmbed>> = {
-        summary: buildSummaryEmbed,
-        reviews: buildReviewsEmbed,
+        profile: buildProfileEmbed,
+        achievements: buildAchievementsEmbed,
         history: buildHistoryEmbed,
+        reviews: buildReviewsEmbed,
       };
 
-      let currentPage: ProfilePage = 'summary';
+      let currentPage: ProfilePage = 'profile';
       const embed = pageBuilders[currentPage]();
       const components = [buildProfileButtons(currentPage)];
 
@@ -392,7 +418,7 @@ export const perfilCommand = {
 
           if (button.user.id !== interaction.user.id) {
             await button.reply({
-              content: 'Apenas quem abriu o perfil pode usar esses botoes.',
+              content: 'So quem abriu o perfil pode navegar.',
               ephemeral: true,
             });
             return;

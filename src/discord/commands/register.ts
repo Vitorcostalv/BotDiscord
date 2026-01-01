@@ -17,6 +17,7 @@ import { settitleCommand } from './settitle.js';
 import { sobreCommand } from './sobre.js';
 import { statusCommand } from './status.js';
 import { steamCommand } from './steam.js';
+import { titleCommand } from './title.js';
 import { titleclearCommand } from './titleclear.js';
 
 const commands = [
@@ -34,6 +35,7 @@ const commands = [
   nivelCommand.data,
   reviewCommand.data,
   settitleCommand.data,
+  titleCommand.data,
   titleclearCommand.data,
   sobreCommand.data,
 ];

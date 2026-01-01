@@ -26,11 +26,11 @@ function safeText(text: string, maxLen: number): string {
 export const nivelCommand = {
   data: new SlashCommandBuilder()
     .setName('nivel')
-    .setDescription('Atualiza o nivel do personagem')
+    .setDescription('Atualiza o nivel do usuario')
     .addIntegerOption((option) =>
       option
         .setName('nivel')
-        .setDescription('Novo nivel do personagem (1 a 99)')
+        .setDescription('Novo nivel do usuario (1 a 99)')
         .setRequired(true)
         .setMinValue(1)
         .setMaxValue(99),
@@ -79,8 +79,6 @@ export const nivelCommand = {
         .setThumbnail(target.displayAvatarURL({ size: 128 }))
         .addFields(
           { name: 'Jogador', value: safeText(updated.playerName, 1024), inline: true },
-          { name: 'Personagem', value: safeText(updated.characterName, 1024), inline: true },
-          { name: 'Classe', value: safeText(updated.className, 1024), inline: true },
           { name: 'Novo nivel', value: String(updated.level), inline: true },
         );
 
