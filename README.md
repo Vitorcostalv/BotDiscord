@@ -24,6 +24,7 @@
 - `ALLOW_ADMIN_EDIT` (opcional, `true` libera /nivel em outros users)
 - `STEAM_API_KEY` (obrigatorio para recursos Steam)
 - `LLM_API_KEY` (opcional, stub de LLM legacy)
+- `PROFILE_BANNER_URL` (opcional, banner no /perfil)
 
 Notas:
 - `.env.example` e apenas referencia. O bot nao carrega esse arquivo.
@@ -50,13 +51,14 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 - As avaliacoes ficam em `data/reviews.json` (por servidor/guild).
 - Nota de 1 a 5 estrelas, categoria AMEI/JOGAVEL/RUIM e opiniao curta (max 400).
 - Tags opcionais (max 5). Favoritos aparecem no `/perfil`.
+- Ranking do `/review top`: soma de estrelas (total), desempate por numero de avaliacoes, media e nome.
 
 ### Comandos /review
 - `/review add nome:<texto> estrelas:<1..5> categoria:<AMEI|JOGAVEL|RUIM> opiniao:<texto> plataforma:<opcional> tags:<CSV> favorito:<opcional>`
 - `/review remove nome:<texto>`
 - `/review view nome:<texto>`
 - `/review my categoria:<opcional> ordenar:<stars|recent>`
-- `/review top categoria:<opcional> min_avaliacoes:<opcional> limite:<opcional>`
+- `/review top categoria:<opcional> min_avaliacoes:<opcional> limite:<opcional>` (padrao: ranking geral, min 1, limite 10)
 - `/review favorite nome:<texto>`
 
 ### Exemplos
@@ -64,6 +66,13 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 - `/review view nome:"Baldur's Gate 3"`
 - `/review top categoria:AMEI limite:10`
 - `/review favorite nome:"Baldur's Gate 3"`
+
+## Perfil com paginas
+- O `/perfil` agora abre um painel com botoes: Resumo, Reviews, Historico e Fechar.
+- Pagina Resumo mostra personagem, titulo, XP, conquistas e favoritos.
+- Pagina Reviews mostra top 5 reviews do usuario e CTA para `/review my`.
+- Pagina Historico lista as ultimas 5 rolagens.
+- Banner opcional via `PROFILE_BANNER_URL`.
 
 ## Troubleshooting (Catalogo de Erros)
 O catalogo completo fica em `src/errors/catalog.ts`.

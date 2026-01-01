@@ -9,6 +9,7 @@ export type PlayerProfile = {
   characterName: string;
   className: string;
   level: number;
+  aboutMe?: string;
   createdBy: string;
   createdAt: number;
   updatedBy: string;
@@ -90,6 +91,7 @@ export function upsertPlayerProfile(userId: string, data: PlayerInput, actorId?:
     characterName: data.characterName,
     className: data.className,
     level: data.level,
+    aboutMe: existing?.aboutMe,
     createdBy,
     createdAt,
     updatedBy,

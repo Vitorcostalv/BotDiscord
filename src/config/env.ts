@@ -15,6 +15,7 @@ export const env = {
   allowAdminEdit: process.env.ALLOW_ADMIN_EDIT === 'true',
   roleMasterId: process.env.ROLE_MASTER_ID ?? '',
   steamApiKey: process.env.STEAM_API_KEY ?? '',
+  profileBannerUrl: process.env.PROFILE_BANNER_URL ?? '',
 };
 
 export function assertEnv(): void {

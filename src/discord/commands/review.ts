@@ -1,7 +1,9 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+﻿import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import {
   addOrUpdateReview,
+  getGuildReviewSummary,
+  getUserReviewCount,
   getGameStats,
   listTopGames,
   listUserReviews,
@@ -12,7 +14,7 @@ import {
 } from '../../services/reviewService.js';
 import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logError } from '../../utils/logging.js';
+import { logError, logInfo } from '../../utils/logging.js';
 import { createSuziEmbed } from '../embeds.js';
 
 const EMOJI_HEART = '\u{1F496}';
@@ -239,6 +241,13 @@ export const reviewCommand = {
           tags,
           favorite: favoriteInput ?? undefined,
         });
+        logInfo('SUZI-CMD-002', 'Review salva', {
+          guildId,
+          userId: interaction.user.id,
+          gameKey: result.gameKey,
+          stars,
+          category,
+        });
 
         const embed = createSuziEmbed(result.status === 'created' ? 'success' : 'primary')
           .setTitle(result.status === 'created' ? 'Review registrada' : 'Review atualizada')
@@ -361,6 +370,7 @@ export const reviewCommand = {
           order: order ?? 'recent',
           limit: 10,
         });
+        const totalReviews = getUserReviewCount(guildId, interaction.user.id);
 
         if (!reviews.length) {
           const embed = buildEmptyEmbed('Sem reviews', 'Voce ainda nao avaliou nenhum jogo.');
@@ -377,7 +387,7 @@ export const reviewCommand = {
 
         const embed = createSuziEmbed('primary')
           .setTitle('Minhas avaliacoes')
-          .setDescription(`Total exibido: ${reviews.length}`)
+          .setDescription(`Total exibido: ${reviews.length} de ${totalReviews}`)
           .addFields({ name: 'Lista', value: lines.join('\n') });
 
         await safeRespond(interaction, { embeds: [embed] });
@@ -386,8 +396,24 @@ export const reviewCommand = {
 
       if (subcommand === 'top') {
         const category = interaction.options.getString('categoria') as ReviewCategory | null;
-        const minReviews = interaction.options.getInteger('min_avaliacoes') ?? 2;
-        const limit = interaction.options.getInteger('limite') ?? 10;
+        const minReviews = interaction.options.getInteger('min_avaliacoes') ?? 1;
+        const limit = Math.min(interaction.options.getInteger('limite') ?? 10, 25);
+        const summary = getGuildReviewSummary(guildId);
+
+        logInfo('SUZI-CMD-002', 'Review ranking consultado', {
+          guildId,
+          totalGames: summary.totalGames,
+          totalReviews: summary.totalReviews,
+        });
+
+        if (summary.totalReviews === 0) {
+          const embed = buildEmptyEmbed(
+            'Sem avaliacoes ainda',
+            'Ainda nao existem avaliacoes neste servidor. Use /review add',
+          );
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
 
         const list = listTopGames(guildId, {
           category: category ?? undefined,
@@ -396,14 +422,16 @@ export const reviewCommand = {
         });
 
         if (!list.length) {
-          const embed = buildEmptyEmbed('Sem ranking', 'Nenhum jogo atende aos filtros.');
+          const embed = buildEmptyEmbed('Sem ranking', 'Nenhum jogo atende aos filtros. Tente /review top sem filtros.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
         const lines = list.map((entry, index) => {
           const avg = entry.stats.avgStars;
-          return `${index + 1}. ${safeText(entry.name, 40)} - ${formatStars(avg)} (${avg.toFixed(1)}) - ${entry.stats.count} avaliacoes`;
+          const totalStars = entry.stats.starsSum;
+          const countLabel = entry.stats.count === 1 ? 'avaliacao' : 'avaliacoes';
+          return `#${index + 1} ${safeText(entry.name, 40)} — ${EMOJI_STAR} ${totalStars} (${entry.stats.count} ${countLabel}, media ${avg.toFixed(1)})`;
         });
 
         const embed = createSuziEmbed('primary')

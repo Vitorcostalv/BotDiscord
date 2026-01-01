@@ -67,6 +67,11 @@ export type GameStatsResult = {
   reviews: Array<{ userId: string; review: ReviewEntry }>;
 };
 
+export type GuildReviewSummary = {
+  totalGames: number;
+  totalReviews: number;
+};
+
 export type ListTopFilters = {
   category?: ReviewCategory;
   minReviews?: number;
@@ -338,7 +343,7 @@ export function listTopGames(guildId: string, filters: ListTopFilters = {}): Top
   const guild = store[guildId];
   if (!guild) return [];
 
-  const minReviews = Math.max(0, filters.minReviews ?? 0);
+  const minReviews = Math.max(0, filters.minReviews ?? 1);
   const limit = Math.max(1, filters.limit ?? 10);
   const category = filters.category;
 
@@ -353,11 +358,14 @@ export function listTopGames(guildId: string, filters: ListTopFilters = {}): Top
     .sort((a, b) => {
       const statsA = sanitizeStats(a.game.stats);
       const statsB = sanitizeStats(b.game.stats);
-      if (statsB.avgStars !== statsA.avgStars) {
-        return statsB.avgStars - statsA.avgStars;
+      if (statsB.starsSum !== statsA.starsSum) {
+        return statsB.starsSum - statsA.starsSum;
       }
       if (statsB.count !== statsA.count) {
         return statsB.count - statsA.count;
+      }
+      if (statsB.avgStars !== statsA.avgStars) {
+        return statsB.avgStars - statsA.avgStars;
       }
       return a.game.name.localeCompare(b.game.name);
     })
@@ -370,6 +378,22 @@ export function listTopGames(guildId: string, filters: ListTopFilters = {}): Top
     }));
 
   return games;
+}
+
+export function getGuildReviewSummary(guildId: string): GuildReviewSummary {
+  const store = readStore();
+  const guild = store[guildId];
+  if (!guild) {
+    return { totalGames: 0, totalReviews: 0 };
+  }
+
+  const games = Object.values(guild.games ?? {});
+  let totalReviews = 0;
+  for (const game of games) {
+    totalReviews += sanitizeStats(game.stats).count;
+  }
+
+  return { totalGames: games.length, totalReviews };
 }
 
 export function listUserReviews(
@@ -410,6 +434,15 @@ export function listUserReviews(
 
   const limit = Math.max(1, filters.limit ?? 10);
   return items.slice(0, limit);
+}
+
+export function getUserReviewCount(guildId: string, userId: string): number {
+  const store = readStore();
+  const guild = store[guildId];
+  if (!guild) return 0;
+  const reviews = guild.reviewsByUser?.[userId];
+  if (!reviews) return 0;
+  return Object.keys(reviews).length;
 }
 
 export function toggleFavorite(guildId: string, userId: string, gameKey: string): ToggleFavoriteResult {
