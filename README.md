@@ -69,6 +69,7 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 
 ## Perfil com paginas
 - O `/perfil` abre um painel com botoes: Perfil, Conquistas, Historico, Reviews e Fechar.
+- O `/perfil` tenta gerar um card em imagem (PNG) via `@napi-rs/canvas`; se falhar, usa o embed normal.
 - Pagina Perfil mostra progresso (nivel + XP) e favoritos.
 - Pagina Conquistas lista conquistas desbloqueadas.
 - Pagina Historico lista as ultimas 5 rolagens.

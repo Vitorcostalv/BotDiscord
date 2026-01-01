@@ -1,5 +1,6 @@
 ﻿import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChatInputCommandInteraction,
@@ -12,13 +13,14 @@
 import type { AchievementDefinition } from '../../achievements/definitions.js';
 import { listAllAchievements, trackEvent, getUserAchievements } from '../../achievements/service.js';
 import { env } from '../../config/env.js';
-import { getUserRolls } from '../../services/rollHistoryService.js';
+import { renderProfileCard } from '../../render/profileCard.js';
 import {
   clearProfileBanner,
   getPlayerProfile,
   setProfileBanner,
 } from '../../services/profileService.js';
 import { getUserReviewCount, listUserReviews, type ReviewCategory } from '../../services/reviewService.js';
+import { getUserRolls } from '../../services/rollHistoryService.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { getUserXp, getXpProgress } from '../../services/xpService.js';
 import { toPublicMessage } from '../../utils/errors.js';
@@ -313,8 +315,28 @@ export const perfilCommand = {
       const rolls = getUserRolls(target.id, 5);
       const displayName = target.globalName ?? target.username;
       const banner = resolveBanner(profile.bannerUrl);
+      const avatarUrl = target.displayAvatarURL({ size: 256, extension: 'png' });
 
-      const buildProfileEmbed = () => {
+      let profileCardBuffer: Buffer | null = null;
+      try {
+        profileCardBuffer = await renderProfileCard({
+          displayName,
+          avatarUrl,
+          bannerUrl: banner,
+          level: progress.level,
+          xpCurrent: progress.current,
+          xpNeeded: progress.needed,
+          xpPercent: progress.percent,
+          favorites: favoriteEntries,
+        });
+      } catch (error) {
+        logWarn('SUZI-CMD-002', error, { message: 'Falha ao renderizar card do perfil', userId: target.id });
+      }
+
+      const profileCardAttachment = profileCardBuffer
+        ? new AttachmentBuilder(profileCardBuffer, { name: 'profile.png' })
+        : null;
+      const buildProfileEmbed = (useCardImage: boolean) => {
         const embed = createSuziEmbed('primary')
           .setTitle(displayName)
           .setThumbnail(target.displayAvatarURL({ size: 128 }))
@@ -330,7 +352,9 @@ export const perfilCommand = {
           )
           .setFooter({ text: 'Pagina 1/4 · Perfil' });
 
-        if (banner) {
+        if (useCardImage && profileCardAttachment) {
+          embed.setImage('attachment://profile.png');
+        } else if (banner) {
           embed.setImage(banner);
         }
 
@@ -383,19 +407,34 @@ export const perfilCommand = {
 
         return embed;
       };
-
       const pageBuilders: Record<ProfilePage, () => ReturnType<typeof createSuziEmbed>> = {
-        profile: buildProfileEmbed,
+        profile: () => buildProfileEmbed(Boolean(profileCardAttachment)),
         achievements: buildAchievementsEmbed,
         history: buildHistoryEmbed,
         reviews: buildReviewsEmbed,
+      };
+
+      const buildPagePayload = (page: ProfilePage) => {
+        const nextEmbed = pageBuilders[page]();
+        const payload = { embeds: [nextEmbed], components: [buildProfileButtons(page)] };
+        if (page === 'profile' && profileCardAttachment) {
+          return { ...payload, files: [profileCardAttachment] };
+        }
+        if (profileCardAttachment) {
+          return { ...payload, attachments: [] };
+        }
+        return payload;
       };
 
       let currentPage: ProfilePage = 'profile';
       const embed = pageBuilders[currentPage]();
       const components = [buildProfileButtons(currentPage)];
 
-      await safeRespond(interaction, { embeds: [embed], components });
+      if (profileCardAttachment) {
+        await safeRespond(interaction, { embeds: [embed], components, files: [profileCardAttachment] });
+      } else {
+        await safeRespond(interaction, { embeds: [embed], components });
+      }
 
       let message: Message | null = null;
       try {
@@ -437,10 +476,7 @@ export const perfilCommand = {
           }
 
           currentPage = nextPage;
-          await button.update({
-            embeds: [pageBuilders[currentPage]()],
-            components: [buildProfileButtons(currentPage)],
-          });
+          await button.update(buildPagePayload(currentPage));
         });
 
         collector.on('end', async () => {

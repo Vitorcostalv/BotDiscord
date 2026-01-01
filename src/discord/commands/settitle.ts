@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { listTitleDefinitions } from '../../services/titleService.js';
 import { safeDeferReply } from '../../utils/interactions.js';
+
 import { executeTitleAdd } from './title.js';
 
 const TITLE_CHOICES = listTitleDefinitions().map((title) => ({
