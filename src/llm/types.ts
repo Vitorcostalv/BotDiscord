@@ -1,4 +1,4 @@
-export type LlmProvider = 'gemini' | 'groq';
+export type LlmProvider = 'gemini' | 'groq' | 'poe';
 
 export type LlmRole = 'system' | 'user' | 'assistant';
 

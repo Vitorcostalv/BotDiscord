@@ -9,7 +9,8 @@ import { logInfo, logWarn } from '../utils/logging.js';
 
 import { callGemini, isGeminiEnabled } from './providers/gemini.js';
 import { callGroq, isGroqEnabled } from './providers/groq.js';
-import type { LlmIntent, LlmProvider, LlmRequest } from './types.js';
+import { callPoe, isPoeAvailable, resolvePoeModel } from './providers/poe.js';
+import type { LlmIntent, LlmMessage, LlmProvider, LlmRequest } from './types.js';
 
 type AskInput = {
   question: string;
@@ -31,6 +32,15 @@ export type RouterAskResult = {
   intent: LlmIntent;
   fromCache: boolean;
   source: 'llm' | 'cache' | 'local' | 'fallback';
+};
+
+export type AdminUseCase = 'ADMIN_MONITOR' | 'ADMIN_TEMPLATES';
+
+type AdminAskInput = {
+  messages: LlmMessage[];
+  useCase: AdminUseCase;
+  guildId?: string | null;
+  userId?: string | null;
 };
 
 type CacheEntry = {
@@ -63,11 +73,13 @@ let cacheMisses = 0;
 const cooldowns: Record<LlmProvider, number> = {
   gemini: 0,
   groq: 0,
+  poe: 0,
 };
 
 const providerCounters: Record<LlmProvider, ProviderCounter> = {
   gemini: { dayKey: getTodayKey(), countToday: 0 },
   groq: { dayKey: getTodayKey(), countToday: 0 },
+  poe: { dayKey: getTodayKey(), countToday: 0 },
 };
 
 function getPrimaryProvider(): LlmProvider {
@@ -213,6 +225,10 @@ function resolveMaxTokens(intent: LlmIntent): number {
   return intent === 'quick_fact' ? env.llmMaxOutputTokensShort : env.llmMaxOutputTokensLong;
 }
 
+function resolveAdminMaxTokens(useCase: AdminUseCase): number {
+  return useCase === 'ADMIN_MONITOR' ? env.llmMaxOutputTokensShort : env.llmMaxOutputTokensLong;
+}
+
 function handleLocalDice(question: string): string | null {
   const match = /(\d+)\s*d\s*(\d+)/i.exec(question);
   if (!match) return null;
@@ -250,7 +266,8 @@ function buildRequest(input: AskInput, intent: LlmIntent): LlmRequest {
 
 function isProviderEnabled(provider: LlmProvider): boolean {
   if (provider === 'gemini') return isGeminiEnabled();
-  return isGroqEnabled();
+  if (provider === 'groq') return isGroqEnabled();
+  return isPoeAvailable();
 }
 
 function shouldCooldown(errorType: string, status?: number): boolean {
@@ -392,6 +409,62 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
       source: 'fallback',
     }
   );
+}
+
+export async function askAdmin(input: AdminAskInput): Promise<RouterAskResult> {
+  const modelGoal = input.useCase === 'ADMIN_MONITOR' ? 'fast' : 'smart';
+  const model = await resolvePoeModel(modelGoal);
+  if (!model || !isPoeAvailable()) {
+    return {
+      text: 'Poe indisponivel agora. Verifique POE_API_KEY e POE_ENABLED.',
+      provider: 'poe',
+      model: model ?? 'poe',
+      latencyMs: 0,
+      intent: 'deep_answer',
+      fromCache: false,
+      source: 'fallback',
+    };
+  }
+
+  const request: LlmRequest = {
+    messages: input.messages,
+    maxOutputTokens: resolveAdminMaxTokens(input.useCase),
+    timeoutMs: env.llmTimeoutMs,
+  };
+
+  logInfo('SUZI-LLM-POE-001', 'Poe admin request', {
+    useCase: input.useCase,
+    model,
+    length: input.messages.map((message) => message.content.length).reduce((a, b) => a + b, 0),
+  });
+
+  const response = await callPoe(request, model);
+  if (response.ok) {
+    updateProviderCount('poe');
+    return {
+      text: response.text,
+      provider: 'poe',
+      model: response.model,
+      latencyMs: response.latencyMs,
+      intent: 'deep_answer',
+      fromCache: false,
+      source: 'llm',
+    };
+  }
+
+  if (shouldCooldown(response.errorType, response.status)) {
+    markCooldown('poe');
+  }
+
+  return {
+    text: 'Nao consegui consultar o Poe agora. Tente novamente em instantes.',
+    provider: 'poe',
+    model: response.model,
+    latencyMs: response.latencyMs,
+    intent: 'deep_answer',
+    fromCache: false,
+    source: 'fallback',
+  };
 }
 
 export function getRouterStatus(): RouterStatus {

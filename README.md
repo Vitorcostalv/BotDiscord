@@ -12,6 +12,9 @@
 - `/nivel nivel:<1..99> user:<opcional>` - Atualiza o nivel do usuario.
 - `/title acao:<add|remove>` - Gerencia titulos desbloqueados.
 - `/steam acao:<link|view|refresh|unlink>` - Vincula e consulta perfil Steam.
+- `/admin logs explain` - Explica erros (admin).
+- `/admin config audit` - Checklist de configuracao (admin).
+- `/admin knowledge build` - Gera knowledge interno (admin).
 - `/sobre` - Lore da Suzi.
 - `/conquistas` - Lista conquistas do player.
 - `/ajuda` - Mostra a lista de comandos.
@@ -24,6 +27,9 @@
 - `GROQ_API_KEY` (opcional, habilita Groq para /pergunta e /jogo)
 - `GROQ_MODEL_FAST` (opcional, padrao: `llama-3.1-8b-instant`)
 - `GROQ_MODEL_SMART` (opcional, padrao: `llama-3.1-70b-versatile`)
+- `POE_API_KEY` (opcional, habilita Poe para comandos admin)
+- `POE_MODEL` (opcional, override do modelo Poe)
+- `POE_ENABLED` (opcional, default: `true` se POE_API_KEY existir)
 - `LLM_PRIMARY` (opcional, `gemini` ou `groq`, padrao: `gemini`)
 - `LLM_TIMEOUT_MS` (opcional, padrao: `12000`)
 - `LLM_COOLDOWN_MS` (opcional, padrao: `600000`)
@@ -58,6 +64,9 @@ Configurar no `.env`:
 - `GEMINI_MODEL` (padrao: `gemini-2.5-flash`)
 - `GROQ_API_KEY`
 - `GROQ_MODEL_FAST` / `GROQ_MODEL_SMART`
+- `POE_API_KEY`
+- `POE_MODEL` (opcional)
+- `POE_ENABLED` (opcional)
 - `LLM_PRIMARY` (padrao: `gemini`)
 
 Checklist para trocar a key no Render:
@@ -98,6 +107,14 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 - `/recomendar jogo` usa suas reviews e o ranking do servidor.
 - `/recomendar filme genero:<opcional> romance_fechado:<opcional>` prioriza filmes com final fechado quando solicitado.
 - `/recomendar tutorial` sugere temas com base nas suas tags.
+
+## Admin (Poe)
+- O Poe e usado apenas em comandos admin (monitoramento, logs e knowledge).
+- Ele nao responde usuarios finais em /pergunta ou /jogo.
+- Exemplos:
+  - `/admin logs explain codigo:SUZI-ENV-003 contexto:"Gemini retornou 403"`
+  - `/admin config audit`
+  - `/admin knowledge build type:errors`
 
 ## Perfil com paginas
 - O `/perfil` abre um painel com botoes: Perfil, Conquistas, Historico, Reviews e Fechar.

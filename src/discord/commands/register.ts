@@ -2,6 +2,7 @@ import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 
 import { env } from '../../config/env.js';
 
+import { adminCommand } from './admin.js';
 import { ajudaCommand } from './ajuda.js';
 import { conquistasCommand } from './conquistas.js';
 import { historicoCommand } from './historico.js';
@@ -21,6 +22,7 @@ import { titleCommand } from './title.js';
 
 const commands = [
   pingCommand.data,
+  adminCommand.data,
   jogoCommand.data,
   perguntaCommand.data,
   perfilCommand.data,
