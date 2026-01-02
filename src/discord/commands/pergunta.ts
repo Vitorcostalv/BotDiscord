@@ -86,6 +86,7 @@ export const perguntaCommand = {
         const geminiResult = await generateGeminiAnswerWithMeta({
           question,
           userProfile,
+          userDisplayName: interaction.user.globalName ?? interaction.user.username,
           userHistory: historyLines,
           questionType,
           scopeHint: scopeHint || undefined,

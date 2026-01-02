@@ -1,12 +1,13 @@
 import { logError, logWarn, logInfo } from '../utils/logging.js';
 
-import { parseDice, rollDice } from './dice.js';
-import type { QuestionType } from './storage.js';
 import type { PlayerProfile } from './profileService.js';
+import type { QuestionType } from './storage.js';
+import { parseDice, rollDice } from './dice.js';
 
 type GeminiInput = {
   question: string;
   userProfile?: PlayerProfile | null;
+  userDisplayName?: string;
   userHistory?: string[];
   questionType?: QuestionType;
   scopeHint?: string;
@@ -39,25 +40,21 @@ function buildSystemInstruction(): string {
   return [
     'Voce e Suzi, uma assistente de jogos, filmes e tutoriais.',
     'Responda em pt-BR, de forma direta e amigavel.',
+    'Nao use estilo RPG, fantasia ou linguagem de personagem.',
+    'Nao mencione classes, niveis, personagens ou aventuras.',
+    'Chame o usuario apenas pelo primeiro nome, sem titulos.',
     'Se nao souber algo especifico, seja honesto e de sugestoes gerais.',
     'Nao invente patches, versoes ou numeros.',
     'Se o usuario pedir rolagem de dados, use o resultado local (nao invente).',
   ].join('\n');
 }
 
-function buildProfileSummary(profile?: PlayerProfile | null): string {
-  if (!profile) {
-    return 'Perfil do player: nao registrado.';
+function buildProfileSummary(profile?: PlayerProfile | null, displayName?: string): string {
+  const name = displayName?.trim() || profile?.playerName?.trim();
+  if (!name) {
+    return 'Nome do usuario: nao informado.';
   }
-
-  const parts = [`Perfil do player: ${profile.playerName}.`, `Nivel: ${profile.level}.`];
-  if (profile.characterName) {
-    parts.push(`Personagem: ${profile.characterName}.`);
-  }
-  if (profile.className) {
-    parts.push(`Classe: ${profile.className}.`);
-  }
-  return parts.join(' ');
+  return `Nome do usuario: ${name}.`;
 }
 
 function extractDiceExpression(text: string): string | null {
@@ -228,6 +225,7 @@ function fallbackAnswer(question: string): string {
 export async function generateGeminiAnswerWithMeta({
   question,
   userProfile,
+  userDisplayName,
   userHistory,
   questionType,
   scopeHint,
@@ -257,7 +255,7 @@ export async function generateGeminiAnswerWithMeta({
     `Pergunta: ${question}`,
     scopeLine,
     hintLine,
-    buildProfileSummary(userProfile),
+    buildProfileSummary(userProfile, userDisplayName),
     historyText,
     'Responda com 1 a 2 paragrafos curtos ou bullets.',
   ].join('\n');

@@ -111,7 +111,7 @@ export function appendQuestionHistory(
   userId: string,
   guildId: string | null,
   questionType: QuestionType,
-  entry: Omit<QuestionHistoryEntry, 'timestamp' | 'questionType' | 'guildId'>,
+  entry: Omit<QuestionHistoryEntry, 'timestamp' | 'questionType' | 'guildId' | 'type'>,
 ): QuestionHistoryEntry[] {
   const store = readStore();
   const userData = store[userId] ?? { history: [], preferences: {} };

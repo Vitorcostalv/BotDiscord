@@ -57,7 +57,11 @@ export const jogoCommand = {
       ].join(' ');
 
       try {
-        const geminiResult = await generateGeminiAnswerWithMeta({ question, userProfile });
+        const geminiResult = await generateGeminiAnswerWithMeta({
+          question,
+          userProfile,
+          userDisplayName: interaction.user.globalName ?? interaction.user.username,
+        });
         const response = geminiResult.text;
 
         if (shouldCountUsage(geminiResult)) {
