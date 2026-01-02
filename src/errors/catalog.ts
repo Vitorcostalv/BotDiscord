@@ -155,6 +155,17 @@ export const ERROR_CATALOG: ErrorCatalogEntry[] = [
     cause: 'Promise rejeitada ou excecao nao capturada.',
     fix: ['Revisar logs e adicionar tratamento no ponto de origem.'],
   },
+  {
+    code: 'SUZI-CANVAS-001',
+    title: 'Canvas backend indisponivel',
+    symptoms: ['Imagens em branco', 'Falha ao renderizar cards'],
+    cause: 'Falha ao carregar fonte ou backend do canvas no deploy.',
+    fix: [
+      'Verifique se @napi-rs/canvas esta instalado corretamente.',
+      'Confirme se as fontes em assets/fonts existem no deploy.',
+      'Reinicie o bot apos ajustar o ambiente.',
+    ],
+  },
 ];
 
 export type ErrorCode = (typeof ERROR_CATALOG)[number]['code'];

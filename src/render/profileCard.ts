@@ -1,6 +1,7 @@
 import type { Image, SKRSContext2D } from '@napi-rs/canvas';
 
 import type { ReviewCategory, ReviewMediaType } from '../services/reviewService.js';
+import { logInfo, logWarn } from '../utils/logging.js';
 
 import { clamp, drawBullets, drawCover, drawParagraph, drawRoundedRect, getCachedImageBuffer } from './canvasUtils.js';
 
@@ -74,6 +75,12 @@ const TYPE_BADGE: Record<ReviewMediaType, string> = {
   MOVIE: '[\u{1F3AC}]',
 };
 
+function truncateUrl(url: string, maxLen = 80): string {
+  const clean = url.trim();
+  if (clean.length <= maxLen) return clean;
+  return `${clean.slice(0, Math.max(0, maxLen - 3))}...`;
+}
+
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
   if (!normalized) return '-';
@@ -122,13 +129,13 @@ function drawAvatar(ctx: SKRSContext2D, image: Image | null, x: number, y: numbe
 
 function drawSectionTitle(ctx: SKRSContext2D, text: string, x: number, y: number): void {
   ctx.fillStyle = COLOR_ACCENT;
-  ctx.font = 'bold 22px "Segoe UI", "Arial", sans-serif';
+  ctx.font = 'bold 22px "Inter", "Segoe UI", "Arial", sans-serif';
   ctx.fillText(text, x, y);
 }
 
 function drawListLine(ctx: SKRSContext2D, text: string, x: number, y: number, accent = false): void {
   ctx.fillStyle = accent ? COLOR_ACCENT : COLOR_TEXT;
-  ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+  ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
   ctx.fillText(text, x, y);
 }
 
@@ -151,7 +158,7 @@ function drawProfilePage(ctx: SKRSContext2D, data: ProfileCardData): void {
   ctx.fill();
 
   ctx.fillStyle = COLOR_MUTED;
-  ctx.font = '16px "Segoe UI", "Arial", sans-serif';
+  ctx.font = '16px "Inter", "Segoe UI", "Arial", sans-serif';
   const xpNeeded = Math.max(1, Math.round(data.xpNeeded));
   ctx.fillText(`Nivel ${data.level}`, barX, barY + 36);
   ctx.fillText(
@@ -166,7 +173,7 @@ function drawProfilePage(ctx: SKRSContext2D, data: ProfileCardData): void {
 
   if (!data.favorites.length) {
     ctx.fillStyle = COLOR_MUTED;
-    ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+    ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
     ctx.fillText('Sem favoritos ainda', baseX, listY);
     return;
   }
@@ -189,7 +196,7 @@ function drawAchievementsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   drawSectionTitle(ctx, 'Conquistas', baseX, titleY);
   let cursorY = titleY + titleLineHeight;
 
-  ctx.font = '16px "Segoe UI", "Arial", sans-serif';
+  ctx.font = '16px "Inter", "Segoe UI", "Arial", sans-serif';
   const totalLine = drawParagraph(ctx, {
     text: `Total desbloqueadas: ${data.totalAchievements}`,
     x: baseX,
@@ -201,7 +208,7 @@ function drawAchievementsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   cursorY += totalLine.height + gap;
 
   if (!data.achievements.length) {
-    ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+    ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
     drawParagraph(ctx, {
       text: 'Nenhuma conquista desbloqueada',
       x: baseX,
@@ -213,7 +220,7 @@ function drawAchievementsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
     return;
   }
 
-  ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+  ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
   drawBullets(ctx, {
     items: data.achievements.slice(0, 6).map((entry) => `${entry.emoji} ${safeText(entry.name, 42)}`),
     x: baseX,
@@ -235,7 +242,7 @@ function drawHistoryPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   const listY = headerY + 30;
   if (!data.history.length) {
     ctx.fillStyle = COLOR_MUTED;
-    ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+    ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
     ctx.fillText('Sem rolagens registradas ainda', baseX, listY);
     return;
   }
@@ -253,13 +260,13 @@ function drawReviewsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   drawSectionTitle(ctx, 'Reviews', baseX, headerY);
 
   ctx.fillStyle = COLOR_MUTED;
-  ctx.font = '16px "Segoe UI", "Arial", sans-serif';
+  ctx.font = '16px "Inter", "Segoe UI", "Arial", sans-serif';
   ctx.fillText(`Total de reviews: ${data.totalReviews}`, baseX, headerY + 24);
 
   const listY = headerY + 52;
   if (!data.reviews.length) {
     ctx.fillStyle = COLOR_MUTED;
-    ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+    ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
     ctx.fillText('Sem reviews ainda', baseX, listY);
     return;
   }
@@ -279,34 +286,31 @@ export async function renderProfileCard(data: ProfileCardData): Promise<Buffer> 
   const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
   const ctx = canvas.getContext('2d');
 
+  const loadRemoteImage = async (label: string, url?: string | null): Promise<Image | null> => {
+    if (!url) return null;
+    const shortUrl = truncateUrl(url);
+    try {
+      const buffer = await getCachedImageBuffer(url);
+      const image = await loadImage(buffer);
+      logInfo('SUZI-CANVAS-001', 'Canvas image loaded', { label, url: shortUrl, bytes: buffer.length });
+      return image;
+    } catch (error) {
+      logWarn('SUZI-CANVAS-001', error, { message: 'Falha ao carregar imagem', label, url: shortUrl });
+      return null;
+    }
+  };
+
   const [bannerImage, avatarImage] = await Promise.all([
-    (async () => {
-      if (!data.bannerUrl) return null;
-      try {
-        const buffer = await getCachedImageBuffer(data.bannerUrl);
-        return await loadImage(buffer);
-      } catch {
-        return null;
-      }
-    })(),
-    (async () => {
-      if (!data.avatarUrl) return null;
-      try {
-        const buffer = await getCachedImageBuffer(data.avatarUrl);
-        return await loadImage(buffer);
-      } catch {
-        return null;
-      }
-    })(),
+    loadRemoteImage('banner', data.bannerUrl),
+    loadRemoteImage('avatar', data.avatarUrl),
   ]);
 
+  drawGradientFallback(ctx);
   if (bannerImage) {
     ctx.save();
     ctx.filter = 'blur(10px)';
     drawCover(ctx, bannerImage, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.restore();
-  } else {
-    drawGradientFallback(ctx);
   }
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
@@ -320,11 +324,11 @@ export async function renderProfileCard(data: ProfileCardData): Promise<Buffer> 
   const nameX = avatarX + avatarSize + 30;
   const nameY = avatarY + 46;
   ctx.fillStyle = COLOR_TEXT;
-  ctx.font = 'bold 42px "Segoe UI", "Arial", sans-serif';
+  ctx.font = 'bold 42px "Inter", "Segoe UI", "Arial", sans-serif';
   ctx.fillText(safeText(data.displayName, 24), nameX, nameY);
 
   ctx.fillStyle = COLOR_ACCENT;
-  ctx.font = '20px "Segoe UI", "Arial", sans-serif';
+  ctx.font = '20px "Inter", "Segoe UI", "Arial", sans-serif';
   ctx.fillText(PAGE_LABELS[data.page], nameX, nameY + 30);
 
   switch (data.page) {

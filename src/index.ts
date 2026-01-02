@@ -19,6 +19,7 @@ import { sobreCommand } from './discord/commands/sobre.js';
 import { statusCommand } from './discord/commands/status.js';
 import { steamCommand } from './discord/commands/steam.js';
 import { titleCommand } from './discord/commands/title.js';
+import { initCanvasRuntime } from './render/canvasSetup.js';
 import { safeReply } from './utils/interactions.js';
 import { logError, logInfo } from './utils/logging.js';
 
@@ -59,6 +60,7 @@ discordInit().catch((error) => {
 });
 
 async function discordInit(): Promise<void> {
+  await initCanvasRuntime();
   await registerCommands();
 
   const client = createClient();

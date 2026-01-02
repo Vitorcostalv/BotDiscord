@@ -1,5 +1,7 @@
 import type { Image, SKRSContext2D } from '@napi-rs/canvas';
 
+import { logInfo, logWarn } from '../utils/logging.js';
+
 import { canvasTheme } from './canvasTheme.js';
 import {
   drawAutoCard,
@@ -29,6 +31,12 @@ const COLOR_ACCENT = canvasTheme.colors.accent;
 const COLOR_ACCENT_SOFT = canvasTheme.colors.accentSoft;
 
 const cardCache = new Map<string, CardCacheEntry>();
+
+function truncateUrl(url: string, maxLen = 80): string {
+  const clean = url.trim();
+  if (clean.length <= maxLen) return clean;
+  return `${clean.slice(0, Math.max(0, maxLen - 3))}...`;
+}
 
 function cacheKey(url?: string | null): string {
   return url?.trim() || 'default';
@@ -267,10 +275,13 @@ export async function renderSobreCard(input: SobreCardInput): Promise<Buffer> {
 
   let suziImage: Image | null = null;
   if (input.suziImageUrl) {
+    const shortUrl = truncateUrl(input.suziImageUrl);
     try {
       const buffer = await getCachedImageBuffer(input.suziImageUrl);
       suziImage = await loadImage(buffer);
-    } catch {
+      logInfo('SUZI-CANVAS-001', 'Canvas image loaded', { label: 'suzi', url: shortUrl, bytes: buffer.length });
+    } catch (error) {
+      logWarn('SUZI-CANVAS-001', error, { message: 'Falha ao carregar imagem', label: 'suzi', url: shortUrl });
       suziImage = null;
     }
   }

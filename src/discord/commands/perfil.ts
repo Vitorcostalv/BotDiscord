@@ -12,6 +12,7 @@ import {
 
 import { getUserAchievements, listAllAchievements, trackEvent } from '../../achievements/service.js';
 import { env } from '../../config/env.js';
+import { isCanvasReady, getCanvasInitError } from '../../render/canvasState.js';
 import { renderProfileCard, type ProfileCardPage } from '../../render/profileCard.js';
 import { clearProfileBanner, getPlayerProfile, setProfileBanner } from '../../services/profileService.js';
 import { getUserReviewCount, listUserReviews } from '../../services/reviewService.js';
@@ -20,7 +21,7 @@ import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { getUserXp, getXpProgress } from '../../services/xpService.js';
 import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
-import { logError, logWarn } from '../../utils/logging.js';
+import { logError, logInfo, logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildMissingProfileEmbed, createSuziEmbed } from '../embeds.js';
 
 type ProfilePage = ProfileCardPage;
@@ -310,16 +311,36 @@ export const perfilCommand = {
         const { label, index, fileKey } = PAGE_LABELS[page];
         const fileName = `profile-${fileKey}.png`;
         let attachment: AttachmentBuilder | null = null;
+        let renderError: string | null = null;
+        logInfo('SUZI-CANVAS-001', 'Render start', {
+          cmd: 'perfil',
+          page,
+          userId: target.id,
+          guildId: interaction.guildId ?? 'dm',
+        });
         try {
-          const buffer = await renderProfileCard({ ...cardBase, page });
-          attachment = new AttachmentBuilder(buffer, { name: fileName });
+          if (!isCanvasReady()) {
+            renderError = 'Erro ao gerar imagem, tente novamente.';
+            logWarn('SUZI-CANVAS-001', new Error('Canvas indisponivel'), {
+              message: 'Canvas indisponivel para renderizar perfil',
+              userId: target.id,
+              reason: getCanvasInitError(),
+            });
+          } else {
+            const buffer = await renderProfileCard({ ...cardBase, page });
+            attachment = new AttachmentBuilder(buffer, { name: fileName });
+          }
         } catch (error) {
+          renderError = 'Erro ao gerar imagem, tente novamente.';
           logWarn('SUZI-CMD-002', error, { message: 'Falha ao renderizar card do perfil', userId: target.id });
         }
 
         const embed = createSuziEmbed('primary')
           .setTitle(`${label} - ${safeText(displayName, 64)}`)
           .setFooter({ text: `Pagina ${index}/4 - ${label}` });
+        if (renderError) {
+          embed.setDescription(renderError);
+        }
 
         if (attachment) {
           embed.setImage(`attachment://${fileName}`);
