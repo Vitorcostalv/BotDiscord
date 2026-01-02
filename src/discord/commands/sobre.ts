@@ -1,6 +1,7 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { AttachmentBuilder, ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { trackEvent } from '../../achievements/service.js';
+import { renderSobreCard } from '../../render/sobreCard.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logWarn } from '../../utils/logging.js';
@@ -15,34 +16,27 @@ export const sobreCommand = {
     if (!canReply) return;
 
     const botUser = interaction.client.user;
-    const embed = createSuziEmbed('accent')
-      .setTitle(`${EMOJI_MOON} Sobre a Suzi`)
-      .setDescription(
-        'Ninguem sabe exatamente quando Suzi apareceu. ' +
-          'Alguns dizem que foi depois de uma rolagem impossivel. Outros juram que foi quando alguem fez a pergunta certa.\n\n' +
-          'Ela vive nos intervalos: entre o dado e o resultado, entre a duvida e a resposta. ' +
-          'Observa, calcula e responde - sempre com um sorriso que parece saber mais do que diz.',
-      )
-      .addFields(
-        {
-          name: 'Curiosidades',
-          value:
-            '- Tem carinho especial por resultados improvaveis\n' +
-            '- Gosta de jogadores persistentes\n' +
-            '- Acha que o acaso nunca e totalmente aleatorio',
-        },
-        {
-          name: 'Frase assinatura',
-          value: '"Nem todo resultado e sorte. Alguns so estavam esperando."',
-        },
-      )
-      .setFooter({ text: 'Suzi - Oraculo gamer' });
+    const suziImageUrl = botUser ? botUser.displayAvatarURL({ size: 512, extension: 'png' }) : null;
 
-    if (botUser) {
-      embed.setThumbnail(botUser.displayAvatarURL({ size: 128 }));
+    try {
+      const buffer = await renderSobreCard({ suziImageUrl });
+      const fileName = 'sobre-suzi.png';
+      const attachment = new AttachmentBuilder(buffer, { name: fileName });
+      const embed = createSuziEmbed('accent')
+        .setTitle(`${EMOJI_MOON} Sobre a Suzi`)
+        .setDescription('Oraculo gamer • entre o dado e o destino')
+        .setImage(`attachment://${fileName}`)
+        .setFooter({ text: 'Suzi • Oraculo gamer' });
+
+      await safeRespond(interaction, { embeds: [embed], files: [attachment] });
+    } catch (error) {
+      logWarn('SUZI-CMD-002', error, { message: 'Falha ao renderizar card do /sobre' });
+      const embed = createSuziEmbed('accent')
+        .setTitle(`${EMOJI_MOON} Sobre a Suzi`)
+        .setDescription('Nao consegui renderizar o card agora. Tente novamente em instantes.')
+        .setFooter({ text: 'Suzi • Oraculo gamer' });
+      await safeRespond(interaction, { embeds: [embed] });
     }
-
-    await safeRespond(interaction, { embeds: [embed] });
 
     try {
       const { unlocked } = trackEvent(interaction.user.id, 'sobre');

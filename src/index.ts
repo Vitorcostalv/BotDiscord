@@ -1,6 +1,7 @@
 import { assertEnv, env } from './config/env.js';
 import { initDatabase } from './db/index.js';
 import { createClient } from './discord/client.js';
+import { adminCommand } from './discord/commands/admin.js';
 import { ajudaCommand } from './discord/commands/ajuda.js';
 import { conquistasCommand } from './discord/commands/conquistas.js';
 import { historicoCommand } from './discord/commands/historico.js';
@@ -34,6 +35,7 @@ process.on('uncaughtException', (error) => {
 
 const commandMap = {
   ping: pingCommand,
+  admin: adminCommand,
   jogo: jogoCommand,
   pergunta: perguntaCommand,
   perfil: perfilCommand,

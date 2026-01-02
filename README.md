@@ -5,7 +5,7 @@
 - `/jogo nome:<texto> plataforma:<opcional>` - Ajuda estruturada para um jogo.
 - `/pergunta tipo:<JOGO|FILME|TUTORIAL> pergunta:<texto>` - Perguntas sobre jogos, filmes e tutoriais (tipo opcional).
 - `/review acao:<add|remove|view|my|top|favorite> tipo:<GAME|MOVIE>` - Avaliacoes de jogos e filmes com ranking e favoritos.
-- `/recomendar jogo|filme|tutorial` - Recomendacoes personalizadas baseadas em reviews.
+- `/recomendar acao:<jogo|filme|tutorial>` - Recomendacoes personalizadas baseadas em reviews.
 - `/register nome_jogador:<texto> nivel:<opcional>` - Registra o perfil do jogador.
 - `/perfil user:<opcional>` - Mostra o perfil do player com paginas.
 - `/roll expressao:<NdM>` - Rolagem de dados (ex: `2d20`).
@@ -105,16 +105,17 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 
 ## Recomendacoes
 - `/recomendar jogo` usa suas reviews e o ranking do servidor.
-- `/recomendar filme genero:<opcional> romance_fechado:<opcional>` prioriza filmes com final fechado quando solicitado.
-- `/recomendar tutorial` sugere temas com base nas suas tags.
+- `/recomendar acao:filme genero:<opcional> romance_fechado:<opcional>` prioriza filmes com final fechado quando solicitado.
+- `/recomendar acao:tutorial` sugere temas com base nas suas tags.
 
 ## Admin (Poe)
 - O Poe e usado apenas em comandos admin (monitoramento, logs e knowledge).
 - Ele nao responde usuarios finais em /pergunta ou /jogo.
 - Exemplos:
-  - `/admin logs explain codigo:SUZI-ENV-003 contexto:"Gemini retornou 403"`
-  - `/admin config audit`
-  - `/admin knowledge build type:errors`
+  - `/admin acao:logs_explain codigo:SUZI-ENV-003 contexto:"Gemini retornou 403"`
+  - `/admin acao:config_audit`
+  - `/admin acao:knowledge_build type:errors`
+  - `/admin acao:truncate alvo:all confirmar:true`
 
 ## Perfil com paginas
 - O `/perfil` abre um painel com botoes: Perfil, Conquistas, Historico, Reviews e Fechar.

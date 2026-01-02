@@ -185,7 +185,7 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
       {
         name: `${EMOJI.bolt} Recomendacoes`,
         value: safeText(
-          '/recomendar jogo\n/recomendar filme\n/recomendar tutorial',
+          '/recomendar acao:<jogo|filme|tutorial>\n- (opcional) genero, romance_fechado',
           1024,
         ),
       },

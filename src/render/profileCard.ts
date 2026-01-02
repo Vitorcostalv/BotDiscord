@@ -2,6 +2,8 @@ import type { Image, SKRSContext2D } from '@napi-rs/canvas';
 
 import type { ReviewCategory, ReviewMediaType } from '../services/reviewService.js';
 
+import { clamp, drawBullets, drawCover, drawParagraph, drawRoundedRect, getCachedImageBuffer } from './canvasUtils.js';
+
 export type ProfileCardPage = 'profile' | 'achievements' | 'history' | 'reviews';
 
 export type ProfileCardFavorite = {
@@ -47,15 +49,8 @@ export type ProfileCardData = {
   totalReviews: number;
 };
 
-type ImageCacheEntry = {
-  buffer: Buffer;
-  expiresAt: number;
-};
-
 const CANVAS_WIDTH = 1000;
 const CANVAS_HEIGHT = 560;
-const CACHE_TTL_MS = 5 * 60 * 1000;
-const IMAGE_TIMEOUT_MS = 6000;
 
 const COLOR_TEXT = '#ffffff';
 const COLOR_MUTED = 'rgba(255, 255, 255, 0.72)';
@@ -79,12 +74,6 @@ const TYPE_BADGE: Record<ReviewMediaType, string> = {
   MOVIE: '[\u{1F3AC}]',
 };
 
-const imageCache = new Map<string, ImageCacheEntry>();
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
   if (!normalized) return '-';
@@ -95,73 +84,6 @@ function safeText(text: string, maxLen: number): string {
 function formatStars(stars: number): string {
   const clamped = clamp(Math.round(stars), 0, 5);
   return `${'\u2605'.repeat(clamped)}${'\u2606'.repeat(5 - clamped)}`;
-}
-
-function cleanupCache(now: number): void {
-  for (const [key, entry] of imageCache.entries()) {
-    if (entry.expiresAt <= now) {
-      imageCache.delete(key);
-    }
-  }
-}
-
-async function fetchImageBuffer(url: string, timeoutMs = IMAGE_TIMEOUT_MS): Promise<Buffer> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`Imagem nao carregou: ${response.status}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function getCachedImageBuffer(url: string): Promise<Buffer> {
-  const now = Date.now();
-  cleanupCache(now);
-  const cached = imageCache.get(url);
-  if (cached && cached.expiresAt > now) {
-    return cached.buffer;
-  }
-  const buffer = await fetchImageBuffer(url);
-  imageCache.set(url, { buffer, expiresAt: now + CACHE_TTL_MS });
-  return buffer;
-}
-
-function drawRoundedRect(
-  ctx: SKRSContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  const r = clamp(radius, 0, Math.min(width, height) / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + width, y, x + width, y + height, r);
-  ctx.arcTo(x + width, y + height, x, y + height, r);
-  ctx.arcTo(x, y + height, x, y, r);
-  ctx.arcTo(x, y, x + width, y, r);
-  ctx.closePath();
-}
-
-function drawCover(ctx: SKRSContext2D, image: Image, width: number, height: number): void {
-  const { width: imgW, height: imgH } = image;
-  if (!imgW || !imgH) {
-    ctx.drawImage(image, 0, 0, width, height);
-    return;
-  }
-  const scale = Math.max(width / imgW, height / imgH);
-  const drawW = imgW * scale;
-  const drawH = imgH * scale;
-  const dx = (width - drawW) / 2;
-  const dy = (height - drawH) / 2;
-  ctx.drawImage(image, dx, dy, drawW, drawH);
 }
 
 function drawGradientFallback(ctx: SKRSContext2D): void {
@@ -259,24 +181,49 @@ function drawProfilePage(ctx: SKRSContext2D, data: ProfileCardData): void {
 
 function drawAchievementsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   const baseX = 60;
-  const headerY = 200;
-  drawSectionTitle(ctx, 'Conquistas', baseX, headerY);
+  const contentWidth = CANVAS_WIDTH - baseX - 80;
+  const titleY = 200;
+  const titleLineHeight = 28;
+  const gap = 12;
 
-  ctx.fillStyle = COLOR_MUTED;
+  drawSectionTitle(ctx, 'Conquistas', baseX, titleY);
+  let cursorY = titleY + titleLineHeight;
+
   ctx.font = '16px "Segoe UI", "Arial", sans-serif';
-  ctx.fillText(`Total desbloqueadas: ${data.totalAchievements}`, baseX, headerY + 24);
+  const totalLine = drawParagraph(ctx, {
+    text: `Total desbloqueadas: ${data.totalAchievements}`,
+    x: baseX,
+    y: cursorY,
+    maxWidth: contentWidth,
+    lineHeight: 22,
+    color: COLOR_MUTED,
+  });
+  cursorY += totalLine.height + gap;
 
-  const listY = headerY + 52;
   if (!data.achievements.length) {
-    ctx.fillStyle = COLOR_MUTED;
     ctx.font = '18px "Segoe UI", "Arial", sans-serif';
-    ctx.fillText('Nenhuma conquista desbloqueada', baseX, listY);
+    drawParagraph(ctx, {
+      text: 'Nenhuma conquista desbloqueada',
+      x: baseX,
+      y: cursorY,
+      maxWidth: contentWidth,
+      lineHeight: 24,
+      color: COLOR_MUTED,
+    });
     return;
   }
 
-  data.achievements.slice(0, 6).forEach((entry, index) => {
-    const line = `${entry.emoji} ${safeText(entry.name, 36)}`;
-    drawListLine(ctx, line, baseX, listY + index * 26);
+  ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+  drawBullets(ctx, {
+    items: data.achievements.slice(0, 6).map((entry) => `${entry.emoji} ${safeText(entry.name, 42)}`),
+    x: baseX,
+    y: cursorY,
+    maxWidth: contentWidth,
+    lineHeight: 26,
+    bulletGap: 8,
+    bulletIndent: 0,
+    bulletSymbol: '',
+    color: COLOR_TEXT,
   });
 }
 

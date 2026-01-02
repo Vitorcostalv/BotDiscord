@@ -4,6 +4,7 @@ import { join } from 'path';
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { env } from '../../config/env.js';
+import { getDb, isDbAvailable } from '../../db/index.js';
 import { askAdmin } from '../../llm/router.js';
 import { hasAdminPermission } from '../../services/permissionService.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
@@ -11,11 +12,25 @@ import { logError, logWarn } from '../../utils/logging.js';
 import { createSuziEmbed } from '../embeds.js';
 
 type KnowledgeType = 'errors' | 'tutorial' | 'help' | 'lore';
+type AdminAction = 'logs_explain' | 'config_audit' | 'knowledge_build' | 'truncate';
+type TruncateTarget = 'reviews' | 'rolls' | 'history' | 'questions' | 'steam' | 'profiles' | 'all';
+
+const EMOJI_TOOL = '\u{1F9F0}';
+const EMOJI_COMPASS = '\u{1F9ED}';
+const EMOJI_BOOKS = '\u{1F4DA}';
+const EMOJI_BROOM = '\u{1F9F9}';
 
 const KNOWLEDGE_COOLDOWN_MS = 10 * 60 * 1000;
 const EXPLAIN_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const knowledgeCooldowns = new Map<string, number>();
 const explainCache = new Map<string, { text: string; expiresAt: number }>();
+
+const ACTION_CHOICES = [
+  { name: `${EMOJI_TOOL} logs explain`, value: 'logs_explain' },
+  { name: `${EMOJI_COMPASS} config audit`, value: 'config_audit' },
+  { name: `${EMOJI_BOOKS} knowledge build`, value: 'knowledge_build' },
+  { name: `${EMOJI_BROOM} truncate`, value: 'truncate' },
+];
 
 const KNOWLEDGE_CHOICES = [
   { name: 'errors', value: 'errors' },
@@ -23,6 +38,50 @@ const KNOWLEDGE_CHOICES = [
   { name: 'help', value: 'help' },
   { name: 'lore', value: 'lore' },
 ];
+
+const TRUNCATE_CHOICES = [
+  { name: 'reviews', value: 'reviews' },
+  { name: 'rolls', value: 'rolls' },
+  { name: 'history', value: 'history' },
+  { name: 'questions', value: 'questions' },
+  { name: 'steam', value: 'steam' },
+  { name: 'profiles', value: 'profiles' },
+  { name: 'all', value: 'all' },
+];
+
+const TRUNCATE_TABLES: Record<TruncateTarget, string[]> = {
+  reviews: ['reviews', 'review_items'],
+  rolls: ['roll_history'],
+  history: ['history_events'],
+  questions: ['question_history'],
+  steam: ['steam_links', 'steam_cache'],
+  profiles: [
+    'users',
+    'profile',
+    'user_preferences',
+    'user_titles',
+    'user_title_unlocks',
+    'user_achievements',
+    'achievement_state',
+  ],
+  all: [
+    'reviews',
+    'review_items',
+    'roll_history',
+    'history_events',
+    'question_history',
+    'steam_links',
+    'steam_cache',
+    'users',
+    'profile',
+    'user_preferences',
+    'user_titles',
+    'user_title_unlocks',
+    'user_achievements',
+    'achievement_state',
+    'gemini_usage',
+  ],
+};
 
 function now(): number {
   return Date.now();
@@ -101,7 +160,7 @@ function parseExplainSections(text: string): {
   const lines = text.split('\n');
   const sections: Record<string, string> = {};
   for (const line of lines) {
-    const match = /^(Explicacao|Causa|Corre(?:cao|ção)|Prevencao)\s*:\s*(.+)$/i.exec(line.trim());
+    const match = /^(Explicacao|Causa|Correcao|Prevencao)\s*:\s*(.+)$/i.exec(line.trim());
     if (!match) continue;
     const key = match[1].toLowerCase();
     sections[key] = match[2].trim();
@@ -109,7 +168,7 @@ function parseExplainSections(text: string): {
   return {
     explanation: sections.explicacao,
     cause: sections.causa,
-    fix: sections.correcao || sections.correção,
+    fix: sections.correcao,
     prevention: sections.prevencao,
   };
 }
@@ -188,52 +247,73 @@ function buildConfigSummary(): string {
   ].join('\n');
 }
 
+function truncateDb(target: TruncateTarget): { tables: string[]; changes: number } | { error: string } {
+  if (!isDbAvailable()) {
+    return { error: 'DB indisponivel' };
+  }
+  const db = getDb();
+  if (!db) {
+    return { error: 'DB indisponivel' };
+  }
+
+  const tables = TRUNCATE_TABLES[target];
+  if (!tables?.length) {
+    return { error: 'Alvo invalido' };
+  }
+
+  const run = db.transaction(() => {
+    let changes = 0;
+    for (const table of tables) {
+      const result = db.prepare(`DELETE FROM ${table}`).run();
+      changes += result.changes ?? 0;
+    }
+    return changes;
+  });
+
+  const changes = run();
+  return { tables, changes };
+}
+
 export const adminCommand = {
   data: new SlashCommandBuilder()
     .setName('admin')
     .setDescription('Comandos administrativos da Suzi')
-    .addSubcommandGroup((group) =>
-      group
-        .setName('logs')
-        .setDescription('Ferramentas para logs')
-        .addSubcommand((subcommand) =>
-          subcommand
-            .setName('explain')
-            .setDescription('Explica um erro com base no codigo')
-            .addStringOption((option) =>
-              option.setName('codigo').setDescription('Codigo do erro').setRequired(true).setMaxLength(80),
-            )
-            .addStringOption((option) =>
-              option
-                .setName('contexto')
-                .setDescription('Trecho seguro de contexto (sem chaves)')
-                .setRequired(false)
-                .setMaxLength(800),
-            ),
-        ),
+    .addStringOption((option) =>
+      option
+        .setName('acao')
+        .setDescription('O que deseja fazer')
+        .setRequired(true)
+        .addChoices(...ACTION_CHOICES),
     )
-    .addSubcommandGroup((group) =>
-      group
-        .setName('config')
-        .setDescription('Auditoria de configuracao')
-        .addSubcommand((subcommand) => subcommand.setName('audit').setDescription('Checklist de configuracao')),
+    .addStringOption((option) =>
+      option.setName('codigo').setDescription('Codigo do erro').setRequired(false).setMaxLength(80),
     )
-    .addSubcommandGroup((group) =>
-      group
-        .setName('knowledge')
-        .setDescription('Geracao de knowledge interno')
-        .addSubcommand((subcommand) =>
-          subcommand
-            .setName('build')
-            .setDescription('Gera knowledge estruturado')
-            .addStringOption((option) =>
-              option
-                .setName('type')
-                .setDescription('Tipo de knowledge')
-                .setRequired(true)
-                .addChoices(...KNOWLEDGE_CHOICES),
-            ),
-        ),
+    .addStringOption((option) =>
+      option
+        .setName('contexto')
+        .setDescription('Trecho seguro de contexto (sem chaves)')
+        .setRequired(false)
+        .setMaxLength(800),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('type')
+        .setDescription('Tipo de knowledge')
+        .setRequired(false)
+        .addChoices(...KNOWLEDGE_CHOICES),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('alvo')
+        .setDescription('Qual dado deve ser limpo')
+        .setRequired(false)
+        .addChoices(...TRUNCATE_CHOICES),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('confirmar')
+        .setDescription('Confirma a limpeza dos dados')
+        .setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
@@ -245,12 +325,19 @@ export const adminCommand = {
       return;
     }
 
-    const group = interaction.options.getSubcommandGroup();
-    const subcommand = interaction.options.getSubcommand();
+    const action = interaction.options.getString('acao', true) as AdminAction;
 
     try {
-      if (group === 'logs' && subcommand === 'explain') {
-        const code = interaction.options.getString('codigo', true).trim().toUpperCase();
+      if (action === 'logs_explain') {
+        const code = interaction.options.getString('codigo')?.trim();
+        if (!code) {
+          const embed = createSuziEmbed('warning')
+            .setTitle('Informe o codigo')
+            .setDescription('Use /admin acao:logs_explain codigo:<SUZI-XXX>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
         const rawContext = interaction.options.getString('contexto');
         const context = sanitizeContext(rawContext);
 
@@ -274,7 +361,7 @@ export const adminCommand = {
 
         const sections = parseExplainSections(responseText);
         const embed = createSuziEmbed('primary')
-          .setTitle('🧰 Explicacao de Log')
+          .setTitle(`${EMOJI_TOOL} Explicacao de Log`)
           .setDescription(`Codigo: ${code}`);
 
         if (sections.explanation || sections.cause || sections.fix || sections.prevention) {
@@ -292,7 +379,7 @@ export const adminCommand = {
         return;
       }
 
-      if (group === 'config' && subcommand === 'audit') {
+      if (action === 'config_audit') {
         const summary = buildConfigSummary();
         const prompt = buildAuditPrompt(summary);
         const result = await askAdmin({
@@ -306,7 +393,7 @@ export const adminCommand = {
         });
 
         const embed = createSuziEmbed('primary')
-          .setTitle('🧭 Config Audit')
+          .setTitle(`${EMOJI_COMPASS} Config Audit`)
           .setDescription('Checklist baseado no estado atual')
           .addFields({ name: 'Checklist', value: safeText(result.text, 1024) });
 
@@ -314,8 +401,16 @@ export const adminCommand = {
         return;
       }
 
-      if (group === 'knowledge' && subcommand === 'build') {
-        const type = interaction.options.getString('type', true) as KnowledgeType;
+      if (action === 'knowledge_build') {
+        const type = interaction.options.getString('type') as KnowledgeType | null;
+        if (!type) {
+          const embed = createSuziEmbed('warning')
+            .setTitle('Informe o type')
+            .setDescription('Use /admin acao:knowledge_build type:<errors|tutorial|help|lore>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
         const cooldownKey = `${interaction.guildId}:${interaction.user.id}:${type}`;
         const cooldown = isKnowledgeCooldownActive(cooldownKey);
         if (!cooldown.ok) {
@@ -354,15 +449,55 @@ export const adminCommand = {
         }
 
         const embed = createSuziEmbed('success')
-          .setTitle('📚 Knowledge gerado')
+          .setTitle(`${EMOJI_BOOKS} Knowledge gerado`)
           .setDescription(`Arquivo salvo: ${safeText(outputPath, 1024)}`)
           .addFields({ name: 'Resumo', value: safeText(result.text, 512) });
 
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
+
+      if (action === 'truncate') {
+        const target = interaction.options.getString('alvo') as TruncateTarget | null;
+        if (!target) {
+          const embed = createSuziEmbed('warning')
+            .setTitle('Informe o alvo')
+            .setDescription('Use /admin acao:truncate alvo:<reviews|rolls|history|questions|steam|profiles|all>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
+        const confirm = interaction.options.getBoolean('confirmar') ?? false;
+        if (!confirm) {
+          const embed = createSuziEmbed('warning')
+            .setTitle('Confirmacao obrigatoria')
+            .setDescription('Use confirmar:true para executar a limpeza.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
+        const result = truncateDb(target);
+        if ('error' in result) {
+          const embed = createSuziEmbed('warning')
+            .setTitle('Nao consegui limpar')
+            .setDescription(result.error);
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
+        const embed = createSuziEmbed('success')
+          .setTitle(`${EMOJI_BROOM} Dados limpos`)
+          .setDescription(`Alvo: ${target}`)
+          .addFields(
+            { name: 'Tabelas', value: safeText(result.tables.join(', '), 1024) },
+            { name: 'Registros removidos', value: String(result.changes) },
+          );
+
+        await safeRespond(interaction, { embeds: [embed] });
+        return;
+      }
     } catch (error) {
-      logError('SUZI-ADMIN-001', error, { message: 'Erro no comando /admin', group, subcommand });
+      logError('SUZI-ADMIN-001', error, { message: 'Erro no comando /admin', action });
       const embed = createSuziEmbed('warning')
         .setTitle('Nao consegui completar')
         .setDescription('Tente novamente em instantes.');

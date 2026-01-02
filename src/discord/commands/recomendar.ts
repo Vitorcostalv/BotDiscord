@@ -54,25 +54,25 @@ export const recomendarCommand = {
   data: new SlashCommandBuilder()
     .setName('recomendar')
     .setDescription('Receba recomendacoes personalizadas')
-    .addSubcommand((subcommand) =>
-      subcommand.setName('jogo').setDescription('Recomendacoes de jogos'),
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('filme')
-        .setDescription('Recomendacoes de filmes')
-        .addStringOption((option) =>
-          option.setName('genero').setDescription('Genero desejado (ex: romance)').setRequired(false),
-        )
-        .addBooleanOption((option) =>
-          option
-            .setName('romance_fechado')
-            .setDescription('Somente filmes com final fechado')
-            .setRequired(false),
+    .addStringOption((option) =>
+      option
+        .setName('acao')
+        .setDescription('Tipo de recomendacao')
+        .setRequired(true)
+        .addChoices(
+          { name: 'jogo', value: 'jogo' },
+          { name: 'filme', value: 'filme' },
+          { name: 'tutorial', value: 'tutorial' },
         ),
     )
-    .addSubcommand((subcommand) =>
-      subcommand.setName('tutorial').setDescription('Recomendacoes de tutoriais'),
+    .addStringOption((option) =>
+      option.setName('genero').setDescription('Genero desejado (ex: romance)').setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('romance_fechado')
+        .setDescription('Somente filmes com final fechado')
+        .setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
@@ -85,10 +85,10 @@ export const recomendarCommand = {
       return;
     }
 
-    const subcommand = interaction.options.getSubcommand();
+    const action = interaction.options.getString('acao', true);
 
     try {
-      if (subcommand === 'tutorial') {
+      if (action === 'tutorial') {
         const tags = getUserTagSummary(guildId, interaction.user.id)
           .slice(0, 5)
           .map((entry) => entry.tag);
@@ -108,7 +108,7 @@ export const recomendarCommand = {
         return;
       }
 
-      const type: ReviewMediaType = subcommand === 'filme' ? 'MOVIE' : 'GAME';
+      const type: ReviewMediaType = action === 'filme' ? 'MOVIE' : 'GAME';
       const generoInput = interaction.options.getString('genero')?.trim() ?? '';
       const romanceClosed = interaction.options.getBoolean('romance_fechado') ?? false;
       const wantsRomanceClosed = type === 'MOVIE' && (romanceClosed || /romance/i.test(generoInput));
@@ -189,7 +189,7 @@ export const recomendarCommand = {
 
       await safeRespond(interaction, { embeds: [embed] });
     } catch (error) {
-      logError('SUZI-CMD-002', error, { message: 'Erro no comando /recomendar', subcommand });
+      logError('SUZI-CMD-002', error, { message: 'Erro no comando /recomendar', action });
       await safeRespond(interaction, 'Nao consegui gerar recomendacoes agora. Tente novamente.');
     }
   },
