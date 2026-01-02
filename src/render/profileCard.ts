@@ -2,13 +2,34 @@ import type { Image, SKRSContext2D } from '@napi-rs/canvas';
 
 import type { ReviewCategory } from '../services/reviewService.js';
 
+export type ProfileCardPage = 'profile' | 'achievements' | 'history' | 'reviews';
+
 export type ProfileCardFavorite = {
   name: string;
   stars: number;
   category: ReviewCategory;
 };
 
+export type ProfileCardAchievement = {
+  emoji: string;
+  name: string;
+};
+
+export type ProfileCardHistory = {
+  expr: string;
+  total: number;
+  when?: string;
+};
+
+export type ProfileCardReview = {
+  name: string;
+  stars: number;
+  category: ReviewCategory;
+  favorite?: boolean;
+};
+
 export type ProfileCardData = {
+  page: ProfileCardPage;
   displayName: string;
   avatarUrl?: string | null;
   bannerUrl?: string | null;
@@ -17,6 +38,11 @@ export type ProfileCardData = {
   xpNeeded: number;
   xpPercent: number;
   favorites: ProfileCardFavorite[];
+  achievements: ProfileCardAchievement[];
+  totalAchievements: number;
+  history: ProfileCardHistory[];
+  reviews: ProfileCardReview[];
+  totalReviews: number;
 };
 
 type ImageCacheEntry = {
@@ -29,13 +55,24 @@ const CANVAS_HEIGHT = 560;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const IMAGE_TIMEOUT_MS = 6000;
 
-const imageCache = new Map<string, ImageCacheEntry>();
+const COLOR_TEXT = '#ffffff';
+const COLOR_MUTED = 'rgba(255, 255, 255, 0.72)';
+const COLOR_ACCENT = '#ff7adf';
+
+const PAGE_LABELS: Record<ProfileCardPage, string> = {
+  profile: 'Perfil',
+  achievements: 'Conquistas',
+  history: 'Historico',
+  reviews: 'Reviews',
+};
 
 const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
   AMEI: '\u{1F496}',
   JOGAVEL: '\u{1F3AE}',
   RUIM: '\u{1F480}',
 };
+
+const imageCache = new Map<string, ImageCacheEntry>();
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -106,12 +143,7 @@ function drawRoundedRect(
   ctx.closePath();
 }
 
-function drawCover(
-  ctx: SKRSContext2D,
-  image: Image,
-  width: number,
-  height: number,
-): void {
+function drawCover(ctx: SKRSContext2D, image: Image, width: number, height: number): void {
   const { width: imgW, height: imgH } = image;
   if (!imgW || !imgH) {
     ctx.drawImage(image, 0, 0, width, height);
@@ -134,13 +166,7 @@ function drawGradientFallback(ctx: SKRSContext2D): void {
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 }
 
-function drawAvatar(
-  ctx: SKRSContext2D,
-  image: Image | null,
-  x: number,
-  y: number,
-  size: number,
-): void {
+function drawAvatar(ctx: SKRSContext2D, image: Image | null, x: number, y: number, size: number): void {
   const borderWidth = 6;
   const radius = size / 2;
   ctx.save();
@@ -165,30 +191,130 @@ function drawAvatar(
   ctx.restore();
 }
 
-function drawStatCard(
-  ctx: SKRSContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  label: string,
-  value: string,
-): void {
-  ctx.save();
-  drawRoundedRect(ctx, x, y, width, height, 16);
-  ctx.fillStyle = 'rgba(12, 8, 20, 0.55)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(181, 107, 255, 0.6)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
+function drawSectionTitle(ctx: SKRSContext2D, text: string, x: number, y: number): void {
+  ctx.fillStyle = COLOR_ACCENT;
+  ctx.font = 'bold 22px "Segoe UI", "Arial", sans-serif';
+  ctx.fillText(text, x, y);
+}
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+function drawListLine(ctx: SKRSContext2D, text: string, x: number, y: number, accent = false): void {
+  ctx.fillStyle = accent ? COLOR_ACCENT : COLOR_TEXT;
+  ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+  ctx.fillText(text, x, y);
+}
+
+function drawProfilePage(ctx: SKRSContext2D, data: ProfileCardData): void {
+  const baseX = 60;
+  const headerY = 200;
+  drawSectionTitle(ctx, 'Progresso com a Suzi', baseX, headerY);
+
+  const barX = baseX;
+  const barY = headerY + 18;
+  const barWidth = 540;
+  const barHeight = 18;
+  drawRoundedRect(ctx, barX, barY, barWidth, barHeight, 9);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.fill();
+
+  const fillWidth = Math.round((clamp(data.xpPercent, 0, 100) / 100) * barWidth);
+  drawRoundedRect(ctx, barX, barY, Math.max(8, fillWidth), barHeight, 9);
+  ctx.fillStyle = COLOR_ACCENT;
+  ctx.fill();
+
+  ctx.fillStyle = COLOR_MUTED;
   ctx.font = '16px "Segoe UI", "Arial", sans-serif';
-  ctx.fillText(label, x + 18, y + 28);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 30px "Segoe UI", "Arial", sans-serif';
-  ctx.fillText(value, x + 18, y + 70);
-  ctx.restore();
+  const xpNeeded = Math.max(1, Math.round(data.xpNeeded));
+  ctx.fillText(`Nivel ${data.level}`, barX, barY + 36);
+  ctx.fillText(
+    `XP ${Math.round(data.xpCurrent)}/${xpNeeded} (${Math.round(data.xpPercent)}%)`,
+    barX + 120,
+    barY + 36,
+  );
+
+  const favHeaderY = headerY + 90;
+  drawSectionTitle(ctx, 'Favoritos', baseX, favHeaderY);
+  const listY = favHeaderY + 26;
+
+  if (!data.favorites.length) {
+    ctx.fillStyle = COLOR_MUTED;
+    ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+    ctx.fillText('Sem favoritos ainda', baseX, listY);
+    return;
+  }
+
+  data.favorites.slice(0, 3).forEach((entry, index) => {
+    const line = `${index + 1}. ${safeText(entry.name, 30)} - ${formatStars(entry.stars)} ${
+      CATEGORY_EMOJI[entry.category]
+    }`;
+    drawListLine(ctx, line, baseX, listY + index * 26);
+  });
+}
+
+function drawAchievementsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
+  const baseX = 60;
+  const headerY = 200;
+  drawSectionTitle(ctx, 'Conquistas', baseX, headerY);
+
+  ctx.fillStyle = COLOR_MUTED;
+  ctx.font = '16px "Segoe UI", "Arial", sans-serif';
+  ctx.fillText(`Total desbloqueadas: ${data.totalAchievements}`, baseX, headerY + 24);
+
+  const listY = headerY + 52;
+  if (!data.achievements.length) {
+    ctx.fillStyle = COLOR_MUTED;
+    ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+    ctx.fillText('Nenhuma conquista desbloqueada', baseX, listY);
+    return;
+  }
+
+  data.achievements.slice(0, 6).forEach((entry, index) => {
+    const line = `${entry.emoji} ${safeText(entry.name, 36)}`;
+    drawListLine(ctx, line, baseX, listY + index * 26);
+  });
+}
+
+function drawHistoryPage(ctx: SKRSContext2D, data: ProfileCardData): void {
+  const baseX = 60;
+  const headerY = 200;
+  drawSectionTitle(ctx, 'Historico de Rolagens', baseX, headerY);
+
+  const listY = headerY + 30;
+  if (!data.history.length) {
+    ctx.fillStyle = COLOR_MUTED;
+    ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+    ctx.fillText('Sem rolagens registradas ainda', baseX, listY);
+    return;
+  }
+
+  data.history.slice(0, 5).forEach((entry, index) => {
+    const when = entry.when ? ` (${entry.when})` : '';
+    const line = `- ${entry.expr} -> ${entry.total}${when}`;
+    drawListLine(ctx, line, baseX, listY + index * 26);
+  });
+}
+
+function drawReviewsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
+  const baseX = 60;
+  const headerY = 200;
+  drawSectionTitle(ctx, 'Reviews', baseX, headerY);
+
+  ctx.fillStyle = COLOR_MUTED;
+  ctx.font = '16px "Segoe UI", "Arial", sans-serif';
+  ctx.fillText(`Total de reviews: ${data.totalReviews}`, baseX, headerY + 24);
+
+  const listY = headerY + 52;
+  if (!data.reviews.length) {
+    ctx.fillStyle = COLOR_MUTED;
+    ctx.font = '18px "Segoe UI", "Arial", sans-serif';
+    ctx.fillText('Sem reviews ainda', baseX, listY);
+    return;
+  }
+
+  data.reviews.slice(0, 5).forEach((entry, index) => {
+    const prefix = entry.favorite ? '\u2605 ' : '';
+    const line = `${prefix}${safeText(entry.name, 30)} - ${formatStars(entry.stars)} (${entry.category})`;
+    drawListLine(ctx, line, baseX, listY + index * 26, entry.favorite);
+  });
 }
 
 export async function renderProfileCard(data: ProfileCardData): Promise<Buffer> {
@@ -230,65 +356,34 @@ export async function renderProfileCard(data: ProfileCardData): Promise<Buffer> 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-  const avatarSize = 140;
-  const avatarX = 56;
-  const avatarY = 96;
+  const avatarSize = 120;
+  const avatarX = 60;
+  const avatarY = 60;
   drawAvatar(ctx, avatarImage, avatarX, avatarY, avatarSize);
 
-  const nameX = avatarX + avatarSize + 36;
-  const nameY = 120;
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 44px "Segoe UI", "Arial", sans-serif';
+  const nameX = avatarX + avatarSize + 30;
+  const nameY = avatarY + 46;
+  ctx.fillStyle = COLOR_TEXT;
+  ctx.font = 'bold 42px "Segoe UI", "Arial", sans-serif';
   ctx.fillText(safeText(data.displayName, 24), nameX, nameY);
 
-  ctx.font = '16px "Segoe UI", "Arial", sans-serif';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.fillText('Progresso com a Suzi', nameX, nameY + 34);
+  ctx.fillStyle = COLOR_ACCENT;
+  ctx.font = '20px "Segoe UI", "Arial", sans-serif';
+  ctx.fillText(PAGE_LABELS[data.page], nameX, nameY + 30);
 
-  const barX = nameX;
-  const barY = nameY + 46;
-  const barWidth = 420;
-  const barHeight = 18;
-  drawRoundedRect(ctx, barX, barY, barWidth, barHeight, 9);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-  ctx.fill();
-
-  const fillWidth = Math.round((clamp(data.xpPercent, 0, 100) / 100) * barWidth);
-  drawRoundedRect(ctx, barX, barY, Math.max(8, fillWidth), barHeight, 9);
-  ctx.fillStyle = '#ff7adf';
-  ctx.fill();
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.font = '16px "Segoe UI", "Arial", sans-serif';
-  const xpNeeded = Math.max(1, Math.round(data.xpNeeded));
-  ctx.fillText(
-    `XP ${Math.round(data.xpCurrent)}/${xpNeeded} (${Math.round(data.xpPercent)}%)`,
-    barX,
-    barY + 38,
-  );
-
-  drawStatCard(ctx, 720, 92, 230, 92, 'Nivel Suzi', String(data.level));
-  drawStatCard(ctx, 720, 206, 230, 92, 'XP', `${Math.round(data.xpCurrent)}/${xpNeeded}`);
-
-  const favoritesY = 360;
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 26px "Segoe UI", "Arial", sans-serif';
-  ctx.fillText('Favoritos', 56, favoritesY);
-
-  ctx.font = '18px "Segoe UI", "Arial", sans-serif';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-
-  if (!data.favorites.length) {
-    ctx.fillText('Sem favoritos ainda', 56, favoritesY + 32);
-  } else {
-    const maxItems = data.favorites.slice(0, 3);
-    maxItems.forEach((favorite, index) => {
-      const lineY = favoritesY + 32 + index * 28;
-      const label = `${index + 1}. ${safeText(favorite.name, 28)} - ${formatStars(favorite.stars)} ${
-        CATEGORY_EMOJI[favorite.category]
-      }`;
-      ctx.fillText(label, 56, lineY);
-    });
+  switch (data.page) {
+    case 'profile':
+      drawProfilePage(ctx, data);
+      break;
+    case 'achievements':
+      drawAchievementsPage(ctx, data);
+      break;
+    case 'history':
+      drawHistoryPage(ctx, data);
+      break;
+    case 'reviews':
+      drawReviewsPage(ctx, data);
+      break;
   }
 
   return canvas.toBuffer('image/png');
