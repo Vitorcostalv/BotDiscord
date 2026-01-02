@@ -8,6 +8,7 @@ import { nivelCommand } from './discord/commands/nivel.js';
 import { perfilCommand } from './discord/commands/perfil.js';
 import { perguntaCommand } from './discord/commands/pergunta.js';
 import { pingCommand } from './discord/commands/ping.js';
+import { recomendarCommand } from './discord/commands/recomendar.js';
 import { registerCommands } from './discord/commands/register.js';
 import { registerPlayerCommand } from './discord/commands/registerPlayer.js';
 import { reviewCommand } from './discord/commands/review.js';
@@ -44,6 +45,7 @@ const commandMap = {
   nivel: nivelCommand,
   review: reviewCommand,
   title: titleCommand,
+  recomendar: recomendarCommand,
   sobre: sobreCommand,
 };
 

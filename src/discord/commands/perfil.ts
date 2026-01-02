@@ -256,24 +256,26 @@ export const perfilCommand = {
       const guildId = interaction.guildId;
       const canShowReviews = Boolean(guildId);
       const favorites = canShowReviews
-        ? listUserReviews(guildId ?? '', target.id, { favoritesOnly: true, order: 'stars', limit: 3 })
+        ? listUserReviews(guildId ?? '', target.id, { favoritesOnly: true, order: 'stars', limit: 10 })
         : [];
       const topReviews = canShowReviews
         ? listUserReviews(guildId ?? '', target.id, { order: 'stars', limit: 5 })
         : [];
       const totalReviews = canShowReviews ? getUserReviewCount(guildId ?? '', target.id) : 0;
 
-      const favoriteKeys = new Set(favorites.map((entry) => entry.gameKey));
-      const favoriteEntries = favorites.map((entry) => ({
+      const favoriteKeys = new Set(favorites.map((entry) => `${entry.type}:${entry.itemKey}`));
+      const favoriteEntries = favorites.slice(0, 3).map((entry) => ({
+        type: entry.type,
         name: entry.name,
         stars: entry.review.stars,
         category: entry.review.category,
       }));
       const reviewEntries = topReviews.map((entry) => ({
+        type: entry.type,
         name: entry.name,
         stars: entry.review.stars,
         category: entry.review.category,
-        favorite: favoriteKeys.has(entry.gameKey),
+        favorite: favoriteKeys.has(`${entry.type}:${entry.itemKey}`),
       }));
 
       const displayName = target.globalName ?? target.username;

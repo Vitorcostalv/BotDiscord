@@ -1,10 +1,11 @@
 import type { Image, SKRSContext2D } from '@napi-rs/canvas';
 
-import type { ReviewCategory } from '../services/reviewService.js';
+import type { ReviewCategory, ReviewMediaType } from '../services/reviewService.js';
 
 export type ProfileCardPage = 'profile' | 'achievements' | 'history' | 'reviews';
 
 export type ProfileCardFavorite = {
+  type: ReviewMediaType;
   name: string;
   stars: number;
   category: ReviewCategory;
@@ -22,6 +23,7 @@ export type ProfileCardHistory = {
 };
 
 export type ProfileCardReview = {
+  type: ReviewMediaType;
   name: string;
   stars: number;
   category: ReviewCategory;
@@ -70,6 +72,11 @@ const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
   AMEI: '\u{1F496}',
   JOGAVEL: '\u{1F3AE}',
   RUIM: '\u{1F480}',
+};
+
+const TYPE_BADGE: Record<ReviewMediaType, string> = {
+  GAME: '[\u{1F3AE}]',
+  MOVIE: '[\u{1F3AC}]',
 };
 
 const imageCache = new Map<string, ImageCacheEntry>();
@@ -245,7 +252,7 @@ function drawProfilePage(ctx: SKRSContext2D, data: ProfileCardData): void {
   data.favorites.slice(0, 3).forEach((entry, index) => {
     const line = `${index + 1}. ${safeText(entry.name, 30)} - ${formatStars(entry.stars)} ${
       CATEGORY_EMOJI[entry.category]
-    }`;
+    } ${TYPE_BADGE[entry.type]}`;
     drawListLine(ctx, line, baseX, listY + index * 26);
   });
 }
@@ -312,7 +319,9 @@ function drawReviewsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
 
   data.reviews.slice(0, 5).forEach((entry, index) => {
     const prefix = entry.favorite ? '\u2605 ' : '';
-    const line = `${prefix}${safeText(entry.name, 30)} - ${formatStars(entry.stars)} (${entry.category})`;
+    const line = `${prefix}${safeText(entry.name, 30)} - ${formatStars(entry.stars)} (${entry.category}) ${
+      TYPE_BADGE[entry.type]
+    }`;
     drawListLine(ctx, line, baseX, listY + index * 26, entry.favorite);
   });
 }

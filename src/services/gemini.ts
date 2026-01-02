@@ -1,12 +1,15 @@
 import { logError, logWarn, logInfo } from '../utils/logging.js';
 
 import { parseDice, rollDice } from './dice.js';
+import type { QuestionType } from './storage.js';
 import type { PlayerProfile } from './profileService.js';
 
 type GeminiInput = {
   question: string;
   userProfile?: PlayerProfile | null;
   userHistory?: string[];
+  questionType?: QuestionType;
+  scopeHint?: string;
 };
 
 type GeminiResult =
@@ -34,9 +37,9 @@ let debugKeyLogged = false;
 
 function buildSystemInstruction(): string {
   return [
-    'Voce e um assistente gamer/RPG.',
+    'Voce e Suzi, uma assistente de jogos, filmes e tutoriais.',
     'Responda em pt-BR, de forma direta e amigavel.',
-    'Se nao souber algo especifico do jogo, seja honesto e de sugestoes gerais.',
+    'Se nao souber algo especifico, seja honesto e de sugestoes gerais.',
     'Nao invente patches, versoes ou numeros.',
     'Se o usuario pedir rolagem de dados, use o resultado local (nao invente).',
   ].join('\n');
@@ -226,6 +229,8 @@ export async function generateGeminiAnswerWithMeta({
   question,
   userProfile,
   userHistory,
+  questionType,
+  scopeHint,
 }: GeminiInput): Promise<GeminiAnswerResult> {
   const diceExpression = extractDiceExpression(question);
   if (diceExpression) {
@@ -245,8 +250,13 @@ export async function generateGeminiAnswerWithMeta({
       ? `Historico recente:\n${userHistory.map((item) => `- ${item}`).join('\n')}`
       : 'Historico recente: nenhum.';
 
+  const scopeLine = questionType ? `Tipo: ${questionType}.` : 'Tipo: nao informado.';
+  const hintLine = scopeHint ? `Observacao: ${scopeHint}` : '';
+
   const prompt = [
     `Pergunta: ${question}`,
+    scopeLine,
+    hintLine,
     buildProfileSummary(userProfile),
     historyText,
     'Responda com 1 a 2 paragrafos curtos ou bullets.',

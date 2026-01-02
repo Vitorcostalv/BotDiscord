@@ -27,6 +27,7 @@ const EMOJI = {
   pin: '\u{1F4CC}',
   tag: '\u{1F3F7}\uFE0F',
   bolt: '\u26A1',
+  movie: '\u{1F3AC}',
 };
 
 const CLASS_EMOJI: Record<string, string> = {
@@ -153,7 +154,7 @@ export function buildAchievementUnlockEmbed(unlocked: AchievementDefinition[]): 
 export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
   const embed = createSuziEmbed('primary')
     .setTitle(`${EMOJI.scroll} Suzi - Central de Comandos`)
-    .setDescription('Seu oraculo gamer/RPG para dicas, perguntas e rolagens.')
+    .setDescription('Sua assistente de jogos, filmes e tutoriais com dicas, reviews e rolagens.')
     .addFields(
       {
         name: `${EMOJI.brain} Informacoes`,
@@ -167,17 +168,24 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
         ),
       },
       {
-        name: `${EMOJI.game} Jogos & Perguntas`,
+        name: `${EMOJI.game} Midia & Perguntas`,
         value: safeText(
           '/jogo nome:<texto> plataforma:<opcional>\n- Ajuda estruturada sobre um jogo\n' +
-            '/pergunta pergunta:<texto>\n- Perguntas gerais sobre jogos',
+            '/pergunta tipo:<JOGO|FILME|TUTORIAL> pergunta:<texto>\n- Perguntas sobre jogos, filmes e tutoriais',
           1024,
         ),
       },
       {
         name: `${EMOJI.level} Avaliacoes`,
         value: safeText(
-          '/review acao:<add|remove|view|my|top|favorite>\n- Avaliacoes de jogos com ranking e favoritos',
+          '/review acao:<add|remove|view|my|top|favorite> tipo:<GAME|MOVIE>\n- Avaliacoes de jogos e filmes',
+          1024,
+        ),
+      },
+      {
+        name: `${EMOJI.bolt} Recomendacoes`,
+        value: safeText(
+          '/recomendar jogo\n/recomendar filme\n/recomendar tutorial',
           1024,
         ),
       },

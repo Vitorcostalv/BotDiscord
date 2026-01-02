@@ -5,7 +5,8 @@ import { generateGeminiAnswerWithMeta, type GeminiAnswerResult } from '../../ser
 import { bumpUsage } from '../../services/geminiUsageService.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro, getPlayerProfile } from '../../services/profileService.js';
-import { appendHistory, getHistory } from '../../services/storage.js';
+import { appendQuestionHistory, getQuestionHistory, type QuestionType } from '../../services/storage.js';
+import { listTopItems } from '../../services/reviewService.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { awardXp } from '../../services/xpService.js';
 import { toPublicMessage } from '../../utils/errors.js';
@@ -33,8 +34,19 @@ function safeText(text: string, maxLen: number): string {
 export const perguntaCommand = {
   data: new SlashCommandBuilder()
     .setName('pergunta')
-    .setDescription('Faca uma pergunta sobre jogos e receba ajuda')
-    .addStringOption((option) => option.setName('pergunta').setDescription('Sua pergunta').setRequired(true)),
+    .setDescription('Faca uma pergunta sobre jogos, filmes ou tutoriais')
+    .addStringOption((option) => option.setName('pergunta').setDescription('Sua pergunta').setRequired(true))
+    .addStringOption((option) =>
+      option
+        .setName('tipo')
+        .setDescription('Tipo da pergunta')
+        .setRequired(false)
+        .addChoices(
+          { name: 'JOGO', value: 'JOGO' },
+          { name: 'FILME', value: 'FILME' },
+          { name: 'TUTORIAL', value: 'TUTORIAL' },
+        ),
+    ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
@@ -44,16 +56,39 @@ export const perguntaCommand = {
     await withCooldown(interaction, 'pergunta', async () => {
       const userId = interaction.user.id;
       const question = interaction.options.getString('pergunta', true);
+      const questionType = (interaction.options.getString('tipo') as QuestionType | null) ?? 'JOGO';
 
       try {
-        const history = getHistory(userId);
-        const historyLines = history.map((h) => `${h.type}: ${h.content} -> ${h.response}`);
+        const history = getQuestionHistory(userId, interaction.guildId, questionType);
+        const historyLines = history.map((h) => `${h.type}/${h.questionType}: ${h.content} -> ${h.response}`);
         const userProfile = getPlayerProfile(userId);
+
+        let scopeHint = '';
+        const wantsRomanceClosed =
+          questionType === 'FILME' && /romance/i.test(question) && /final fechado/i.test(question);
+        if (wantsRomanceClosed && interaction.guildId) {
+          const closedMovies = listTopItems(interaction.guildId, {
+            type: 'MOVIE',
+            romanceClosedOnly: true,
+            minReviews: 1,
+            limit: 5,
+          });
+          if (closedMovies.length) {
+            scopeHint = `Filmes com final fechado marcados no servidor: ${closedMovies
+              .map((item) => item.name)
+              .join(', ')}. Se nao tiver certeza, avise.`;
+          } else {
+            scopeHint =
+              'Nao ha filmes marcados como final fechado no servidor. Se nao tiver certeza, avise o usuario.';
+          }
+        }
 
         const geminiResult = await generateGeminiAnswerWithMeta({
           question,
           userProfile,
           userHistory: historyLines,
+          questionType,
+          scopeHint: scopeHint || undefined,
         });
         const response = geminiResult.text;
 
@@ -61,7 +96,10 @@ export const perguntaCommand = {
           bumpUsage({ userId, guildId: interaction.guildId });
         }
 
-        appendHistory(userId, { type: 'pergunta', content: question, response });
+        appendQuestionHistory(userId, interaction.guildId, questionType, {
+          content: question,
+          response,
+        });
         appendProfileHistory(userId, {
           type: 'pergunta',
           label: safeText(question, 50),

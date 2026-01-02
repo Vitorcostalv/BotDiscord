@@ -10,6 +10,7 @@ import { nivelCommand } from './nivel.js';
 import { perfilCommand } from './perfil.js';
 import { perguntaCommand } from './pergunta.js';
 import { pingCommand } from './ping.js';
+import { recomendarCommand } from './recomendar.js';
 import { registerPlayerCommand } from './registerPlayer.js';
 import { reviewCommand } from './review.js';
 import { rollCommand } from './roll.js';
@@ -33,6 +34,7 @@ const commands = [
   nivelCommand.data,
   reviewCommand.data,
   titleCommand.data,
+  recomendarCommand.data,
   sobreCommand.data,
 ];
 

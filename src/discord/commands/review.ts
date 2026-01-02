@@ -1,16 +1,18 @@
-﻿import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import {
   addOrUpdateReview,
   getGuildReviewSummary,
+  getMediaStats,
   getUserReviewCount,
-  getGameStats,
-  listTopGames,
+  isRomanceClosed,
+  listTopItems,
   listUserReviews,
-  normalizeGameKey,
+  normalizeMediaKey,
   removeReview,
   toggleFavorite,
   type ReviewCategory,
+  type ReviewMediaType,
 } from '../../services/reviewService.js';
 import { toPublicMessage } from '../../utils/errors.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
@@ -22,11 +24,19 @@ const EMOJI_GAME = '\u{1F3AE}';
 const EMOJI_SKULL = '\u{1F480}';
 const EMOJI_STAR = '\u2B50';
 const EMOJI_TAG = '\u{1F3F7}\uFE0F';
+const EMOJI_MOVIE = '\u{1F3AC}';
+const STAR_FILLED = '\u2605';
+const STAR_EMPTY = '\u2606';
 
 const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
   AMEI: EMOJI_HEART,
   JOGAVEL: EMOJI_GAME,
   RUIM: EMOJI_SKULL,
+};
+
+const TYPE_EMOJI: Record<ReviewMediaType, string> = {
+  GAME: EMOJI_GAME,
+  MOVIE: EMOJI_MOVIE,
 };
 
 const CATEGORY_CHOICES = [
@@ -46,6 +56,11 @@ const ACTION_CHOICES = [
   { name: 'favorite', value: 'favorite' },
 ];
 
+const TYPE_CHOICES = [
+  { name: `${EMOJI_GAME} GAME`, value: 'GAME' },
+  { name: `${EMOJI_MOVIE} MOVIE`, value: 'MOVIE' },
+];
+
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
   if (!normalized) return '-';
@@ -56,11 +71,15 @@ function safeText(text: string, maxLen: number): string {
 
 function formatStars(value: number): string {
   const clamped = Math.max(0, Math.min(5, Math.round(value)));
-  return `${'★'.repeat(clamped)}${'☆'.repeat(5 - clamped)}`;
+  return `${STAR_FILLED.repeat(clamped)}${STAR_EMPTY.repeat(5 - clamped)}`;
 }
 
 function formatCategory(category: ReviewCategory): string {
   return `${CATEGORY_EMOJI[category]} ${category}`;
+}
+
+function formatType(type: ReviewMediaType): string {
+  return `${TYPE_EMOJI[type]} ${type}`;
 }
 
 function parseTags(input?: string): { ok: true; tags: string[] } | { ok: false; message: string } {
@@ -94,7 +113,7 @@ function buildEmptyEmbed(title: string, description: string) {
 export const reviewCommand = {
   data: new SlashCommandBuilder()
     .setName('review')
-    .setDescription('Gerencie avaliacoes de jogos')
+    .setDescription('Gerencie avaliacoes de jogos e filmes')
     .addStringOption((option) =>
       option
         .setName('acao')
@@ -102,7 +121,14 @@ export const reviewCommand = {
         .setRequired(true)
         .addChoices(...ACTION_CHOICES),
     )
-    .addStringOption((option) => option.setName('nome').setDescription('Nome do jogo').setRequired(false))
+    .addStringOption((option) =>
+      option
+        .setName('tipo')
+        .setDescription('Tipo da avaliacao (GAME/MOVIE)')
+        .setRequired(false)
+        .addChoices(...TYPE_CHOICES),
+    )
+    .addStringOption((option) => option.setName('nome').setDescription('Nome do item').setRequired(false))
     .addIntegerOption((option) =>
       option.setName('estrelas').setDescription('Nota (1 a 5)').setRequired(false).setMinValue(1).setMaxValue(5),
     )
@@ -124,6 +150,12 @@ export const reviewCommand = {
     )
     .addBooleanOption((option) =>
       option.setName('favorito').setDescription('Marca como favorito').setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('romance_fechado')
+        .setDescription('Somente para filmes: final fechado')
+        .setRequired(false),
     )
     .addStringOption((option) =>
       option
@@ -162,18 +194,19 @@ export const reviewCommand = {
     }
 
     const action = interaction.options.getString('acao', true) as ReviewAction;
+    const type = (interaction.options.getString('tipo') as ReviewMediaType | null) ?? 'GAME';
 
     try {
       if (action === 'add') {
         const name = interaction.options.getString('nome')?.trim();
         if (!name) {
-          const embed = buildEmptyEmbed('Informe o jogo', 'Use /review acao:add nome:<texto>.');
+          const embed = buildEmptyEmbed('Informe o item', 'Use /review acao:add nome:<texto>.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
-        const gameKey = normalizeGameKey(name);
-        if (!gameKey) {
-          const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o jogo.');
+        const itemKey = normalizeMediaKey(name);
+        if (!itemKey) {
+          const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o item.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -199,6 +232,7 @@ export const reviewCommand = {
         const platform = interaction.options.getString('plataforma');
         const tagsInput = interaction.options.getString('tags');
         const favoriteInput = interaction.options.getBoolean('favorito');
+        const romanceClosedInput = interaction.options.getBoolean('romance_fechado');
 
         if (opinion.length > 400) {
           const embed = buildEmptyEmbed('Opiniao muito longa', 'Use no maximo 400 caracteres.');
@@ -218,6 +252,7 @@ export const reviewCommand = {
         }
 
         const result = addOrUpdateReview(guildId, interaction.user.id, {
+          type,
           name,
           stars,
           category,
@@ -225,11 +260,13 @@ export const reviewCommand = {
           platform: platform ?? undefined,
           tags,
           favorite: favoriteInput ?? undefined,
+          romanceClosed: type === 'MOVIE' ? romanceClosedInput ?? undefined : undefined,
         });
         logInfo('SUZI-CMD-002', 'Review salva', {
           guildId,
           userId: interaction.user.id,
-          gameKey: result.gameKey,
+          itemKey: result.itemKey,
+          type,
           stars,
           category,
         });
@@ -242,7 +279,8 @@ export const reviewCommand = {
               : 'Sua avaliacao foi atualizada.',
           )
           .addFields(
-            { name: 'Jogo', value: safeText(result.game.name, 256) },
+            { name: 'Item', value: safeText(result.item.name, 256) },
+            { name: 'Tipo', value: formatType(type), inline: true },
             { name: `${EMOJI_STAR} Estrelas`, value: `${formatStars(result.review.stars)} (${result.review.stars}/5)` },
             { name: 'Categoria', value: formatCategory(result.review.category), inline: true },
             {
@@ -257,6 +295,14 @@ export const reviewCommand = {
             { name: 'Favorito', value: result.review.favorite ? 'Sim' : 'Nao', inline: true },
           );
 
+        if (type === 'MOVIE' && romanceClosedInput !== null) {
+          embed.addFields({
+            name: 'Romance fechado',
+            value: romanceClosedInput ? 'Sim' : 'Nao',
+            inline: true,
+          });
+        }
+
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
@@ -264,20 +310,20 @@ export const reviewCommand = {
       if (action === 'remove') {
         const name = interaction.options.getString('nome')?.trim();
         if (!name) {
-          const embed = buildEmptyEmbed('Informe o jogo', 'Use /review acao:remove nome:<texto>.');
+          const embed = buildEmptyEmbed('Informe o item', 'Use /review acao:remove nome:<texto>.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
-        const gameKey = normalizeGameKey(name);
-        if (!gameKey) {
-          const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o jogo.');
+        const itemKey = normalizeMediaKey(name);
+        if (!itemKey) {
+          const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o item.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
-        const result = removeReview(guildId, interaction.user.id, gameKey);
+        const result = removeReview(guildId, interaction.user.id, type, itemKey);
         if (!result.removed) {
-          const embed = buildEmptyEmbed('Review nao encontrada', 'Voce ainda nao avaliou esse jogo.');
+          const embed = buildEmptyEmbed('Review nao encontrada', 'Voce ainda nao avaliou esse item.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -285,7 +331,10 @@ export const reviewCommand = {
         const embed = createSuziEmbed('success')
           .setTitle('Review removida')
           .setDescription('Sua avaliacao foi removida do servidor.')
-          .addFields({ name: 'Jogo', value: safeText(result.game?.name ?? name, 256) });
+          .addFields(
+            { name: 'Item', value: safeText(result.item?.name ?? name, 256) },
+            { name: 'Tipo', value: formatType(type), inline: true },
+          );
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
@@ -293,26 +342,26 @@ export const reviewCommand = {
       if (action === 'view') {
         const name = interaction.options.getString('nome')?.trim();
         if (!name) {
-          const embed = buildEmptyEmbed('Informe o jogo', 'Use /review acao:view nome:<texto>.');
+          const embed = buildEmptyEmbed('Informe o item', 'Use /review acao:view nome:<texto>.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
-        const gameKey = normalizeGameKey(name);
-        if (!gameKey) {
-          const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o jogo.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
-
-        const { game, reviews } = getGameStats(guildId, gameKey);
-        if (!game || game.stats.count <= 0) {
-          const embed = buildEmptyEmbed('Sem reviews', 'Este jogo ainda nao foi avaliado no servidor.');
+        const itemKey = normalizeMediaKey(name);
+        if (!itemKey) {
+          const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o item.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
-        const avgStars = game.stats.avgStars;
-        const counts = game.stats.categoryCounts;
+        const { item, reviews } = getMediaStats(guildId, type, itemKey);
+        if (!item || item.stats.count <= 0) {
+          const embed = buildEmptyEmbed('Sem reviews', 'Este item ainda nao foi avaliado no servidor.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
+        const avgStars = item.stats.avgStars;
+        const counts = item.stats.categoryCounts;
         const distribution = [
           `${CATEGORY_EMOJI.AMEI} AMEI: ${counts.AMEI}`,
           `${CATEGORY_EMOJI.JOGAVEL} JOGAVEL: ${counts.JOGAVEL}`,
@@ -325,25 +374,36 @@ export const reviewCommand = {
           .slice(0, 3)
           .map((entry) => {
             const opinion = safeText(entry.review.opinion, 80);
-            return `- <@${entry.userId}> ${formatStars(entry.review.stars)} ${formatCategory(entry.review.category)}\n  "${opinion}"`;
+            return `- <@${entry.userId}> ${formatStars(entry.review.stars)} ${formatCategory(entry.review.category)}\n  \"${opinion}\"`;
           });
 
         const embed = createSuziEmbed('primary')
-          .setTitle(`Review do servidor - ${safeText(game.name, 256)}`)
+          .setTitle(`Review do servidor - ${safeText(item.name, 256)}`)
           .addFields(
             {
               name: 'Media do servidor',
               value: `${formatStars(avgStars)} (${avgStars.toFixed(1)}/5)`,
               inline: true,
             },
-            { name: 'Total de avaliacoes', value: String(game.stats.count), inline: true },
+            { name: 'Total de avaliacoes', value: String(item.stats.count), inline: true },
             { name: 'Categorias', value: distribution },
+            { name: 'Tipo', value: formatType(type), inline: true },
           );
 
-        if (game.platforms?.length) {
+        if (item.platforms?.length) {
           embed.addFields({
             name: 'Plataformas',
-            value: safeText(game.platforms.join(', '), 256),
+            value: safeText(item.platforms.join(', '), 256),
+          });
+        }
+
+        if (type === 'MOVIE') {
+          embed.addFields({
+            name: 'Romance fechado',
+            value: isRomanceClosed(item.stats)
+              ? `Sim (${item.stats.romanceClosedCount} fechado)`
+              : `Nao (${item.stats.romanceOpenCount} aberto)`,
+            inline: true,
           });
         }
 
@@ -361,14 +421,15 @@ export const reviewCommand = {
         const order = interaction.options.getString('ordenar') as 'stars' | 'recent' | null;
 
         const reviews = listUserReviews(guildId, interaction.user.id, {
+          type,
           category: category ?? undefined,
           order: order ?? 'recent',
           limit: 10,
         });
-        const totalReviews = getUserReviewCount(guildId, interaction.user.id);
+        const totalReviews = getUserReviewCount(guildId, interaction.user.id, type);
 
         if (!reviews.length) {
-          const embed = buildEmptyEmbed('Sem reviews', 'Voce ainda nao avaliou nenhum jogo.');
+          const embed = buildEmptyEmbed('Sem reviews', 'Voce ainda nao avaliou nenhum item.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -377,7 +438,7 @@ export const reviewCommand = {
           const favoriteLabel = entry.review.favorite ? ` ${EMOJI_HEART} favorito` : '';
           return `- ${safeText(entry.name, 40)} ${formatStars(entry.review.stars)} ${formatCategory(
             entry.review.category,
-          )}${favoriteLabel}`;
+          )} ${formatType(entry.type)}${favoriteLabel}`;
         });
 
         const embed = createSuziEmbed('primary')
@@ -393,12 +454,13 @@ export const reviewCommand = {
         const category = interaction.options.getString('categoria') as ReviewCategory | null;
         const minReviews = interaction.options.getInteger('min_avaliacoes') ?? 1;
         const limit = Math.min(interaction.options.getInteger('limite') ?? 10, 25);
-        const summary = getGuildReviewSummary(guildId);
+        const summary = getGuildReviewSummary(guildId, type);
 
         logInfo('SUZI-CMD-002', 'Review ranking consultado', {
           guildId,
-          totalGames: summary.totalGames,
+          totalItems: summary.totalItems,
           totalReviews: summary.totalReviews,
+          type,
         });
 
         if (summary.totalReviews === 0) {
@@ -410,17 +472,15 @@ export const reviewCommand = {
           return;
         }
 
-        const list = listTopGames(guildId, {
+        const list = listTopItems(guildId, {
+          type,
           category: category ?? undefined,
           minReviews,
           limit,
         });
 
         if (!list.length) {
-          const embed = buildEmptyEmbed(
-            'Sem ranking',
-            'Nenhum jogo atende aos filtros. Tente /review acao:top sem filtros.',
-          );
+          const embed = buildEmptyEmbed('Sem ranking', 'Nenhum item atende aos filtros. Tente /review acao:top sem filtros.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -429,13 +489,13 @@ export const reviewCommand = {
           const avg = entry.stats.avgStars;
           const totalStars = entry.stats.starsSum;
           const countLabel = entry.stats.count === 1 ? 'avaliacao' : 'avaliacoes';
-          return `#${index + 1} ${safeText(entry.name, 40)} — ${EMOJI_STAR} ${totalStars} (${entry.stats.count} ${countLabel}, media ${avg.toFixed(1)})`;
+          return `#${index + 1} ${safeText(entry.name, 40)} - ${EMOJI_STAR} ${totalStars} (${entry.stats.count} ${countLabel}, media ${avg.toFixed(1)})`;
         });
 
         const embed = createSuziEmbed('primary')
-          .setTitle('Ranking de jogos do servidor')
+          .setTitle('Ranking do servidor')
           .setDescription(
-            `${category ? `Categoria: ${formatCategory(category)}\n` : ''}Minimo de avaliacoes: ${minReviews}`,
+            `${category ? `Categoria: ${formatCategory(category)}\n` : ''}Tipo: ${formatType(type)}\nMinimo de avaliacoes: ${minReviews}`,
           )
           .addFields({ name: 'Top', value: lines.join('\n') });
 
@@ -446,23 +506,24 @@ export const reviewCommand = {
       if (action === 'favorite') {
         const name = interaction.options.getString('nome')?.trim();
         if (!name) {
-          const embed = buildEmptyEmbed('Informe o jogo', 'Use /review acao:favorite nome:<texto>.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
-        const gameKey = normalizeGameKey(name);
-        if (!gameKey) {
-          const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o jogo.');
+          const embed = buildEmptyEmbed('Informe o item', 'Use /review acao:favorite nome:<texto>.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
-        const result = toggleFavorite(guildId, interaction.user.id, gameKey);
+        const itemKey = normalizeMediaKey(name);
+        if (!itemKey) {
+          const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o item.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+
+        const result = toggleFavorite(guildId, interaction.user.id, type, itemKey);
         if (!result.ok) {
           const message =
             result.reason === 'LIMIT'
               ? `Limite de ${result.limit ?? 10} favoritos. Remova um favorito antes de adicionar outro.`
-              : 'Voce ainda nao avaliou esse jogo.';
+              : 'Voce ainda nao avaliou esse item.';
           const embed = buildEmptyEmbed('Nao foi possivel', message);
           await safeRespond(interaction, { embeds: [embed] });
           return;

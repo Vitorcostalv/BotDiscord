@@ -9,6 +9,17 @@ type UserHistoryEntry = {
   timestamp: number;
 };
 
+export type QuestionType = 'JOGO' | 'FILME' | 'TUTORIAL';
+
+type QuestionHistoryEntry = {
+  type: 'pergunta';
+  questionType: QuestionType;
+  content: string;
+  response: string;
+  timestamp: number;
+  guildId: string;
+};
+
 type UserPreferences = {
   plataforma?: string;
   genero?: string;
@@ -17,6 +28,7 @@ type UserPreferences = {
 type PersistedUserData = {
   history: UserHistoryEntry[];
   preferences: UserPreferences;
+  questionHistory?: Record<string, Record<QuestionType, QuestionHistoryEntry[]>>;
 };
 
 type StoreShape = Record<string, PersistedUserData>;
@@ -38,6 +50,7 @@ const DATA_DIR = join(process.cwd(), 'data');
 const STORAGE_PATH = join(DATA_DIR, 'storage.json');
 const PLAYERS_PATH = join(DATA_DIR, 'players.json');
 const HISTORY_LIMIT = 10;
+const QUESTION_HISTORY_LIMIT = 8;
 
 function readStore(): StoreShape {
   return readJsonFile<StoreShape>(STORAGE_PATH, {});
@@ -71,6 +84,75 @@ export function appendHistory(
 export function getHistory(userId: string): UserHistoryEntry[] {
   const store = readStore();
   return store[userId]?.history ?? [];
+}
+
+function ensureQuestionHistory(
+  userData: PersistedUserData,
+  guildKey: string,
+  questionType: QuestionType,
+): QuestionHistoryEntry[] {
+  if (!userData.questionHistory) {
+    userData.questionHistory = {};
+  }
+  if (!userData.questionHistory[guildKey]) {
+    userData.questionHistory[guildKey] = {
+      JOGO: [],
+      FILME: [],
+      TUTORIAL: [],
+    };
+  }
+  if (!userData.questionHistory[guildKey][questionType]) {
+    userData.questionHistory[guildKey][questionType] = [];
+  }
+  return userData.questionHistory[guildKey][questionType];
+}
+
+export function appendQuestionHistory(
+  userId: string,
+  guildId: string | null,
+  questionType: QuestionType,
+  entry: Omit<QuestionHistoryEntry, 'timestamp' | 'questionType' | 'guildId'>,
+): QuestionHistoryEntry[] {
+  const store = readStore();
+  const userData = store[userId] ?? { history: [], preferences: {} };
+  const guildKey = guildId ?? 'dm';
+  const target = ensureQuestionHistory(userData, guildKey, questionType);
+  const newEntry: QuestionHistoryEntry = {
+    ...entry,
+    type: 'pergunta',
+    questionType,
+    guildId: guildKey,
+    timestamp: Date.now(),
+  };
+  const updated = [...target, newEntry].slice(-QUESTION_HISTORY_LIMIT);
+  userData.questionHistory![guildKey][questionType] = updated;
+  store[userId] = userData;
+  writeStore(store);
+  return updated;
+}
+
+export function getQuestionHistory(
+  userId: string,
+  guildId: string | null,
+  questionType: QuestionType,
+): QuestionHistoryEntry[] {
+  const store = readStore();
+  const guildKey = guildId ?? 'dm';
+  const direct = store[userId]?.questionHistory?.[guildKey]?.[questionType] ?? [];
+  if (direct.length) return direct;
+  if (questionType !== 'JOGO') return direct;
+  const legacy = store[userId]?.history ?? [];
+  return legacy
+    .filter((entry) => entry.type === 'pergunta')
+    .slice(-QUESTION_HISTORY_LIMIT)
+    .map((entry) => ({
+      type: 'pergunta',
+      questionType: 'JOGO',
+      content: entry.content,
+      response: entry.response,
+      timestamp: entry.timestamp,
+      guildId: guildKey,
+    }));
 }
 
 export function savePreferences(userId: string, prefs: UserPreferences): UserPreferences {

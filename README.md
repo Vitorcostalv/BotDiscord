@@ -3,8 +3,9 @@
 ## Comandos
 - `/ping` - Latencia rapida.
 - `/jogo nome:<texto> plataforma:<opcional>` - Ajuda estruturada para um jogo.
-- `/pergunta pergunta:<texto>` - Perguntas sobre jogos com memoria curta.
-- `/review acao:<add|remove|view|my|top|favorite>` - Avaliacoes de jogos com ranking e favoritos.
+- `/pergunta tipo:<JOGO|FILME|TUTORIAL> pergunta:<texto>` - Perguntas sobre jogos, filmes e tutoriais (tipo opcional).
+- `/review acao:<add|remove|view|my|top|favorite> tipo:<GAME|MOVIE>` - Avaliacoes de jogos e filmes com ranking e favoritos.
+- `/recomendar jogo|filme|tutorial` - Recomendacoes personalizadas baseadas em reviews.
 - `/register nome_jogador:<texto> nivel:<opcional>` - Registra o perfil do jogador.
 - `/perfil user:<opcional>` - Mostra o perfil do player com paginas.
 - `/roll expressao:<NdM>` - Rolagem de dados (ex: `2d20`).
@@ -47,25 +48,32 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 - Use `/steam acao:<link|view|refresh|unlink>`.
 - Observacao: jogo atual so aparece se o perfil e detalhes estiverem publicos na Steam.
 
-## Avaliacoes de Jogos
-- As avaliacoes ficam em `data/reviews.json` (por servidor/guild).
+## Avaliacoes de Jogos e Filmes
+- As avaliacoes ficam em `data/reviews.json` (por servidor/guild e tipo).
 - Nota de 1 a 5 estrelas, categoria AMEI/JOGAVEL/RUIM e opiniao curta (max 400).
-- Tags opcionais (max 5). Favoritos aparecem no `/perfil`.
+- Tags opcionais (max 5). Favoritos aparecem no `/perfil` com badge 🎮/🎬.
+- Use `tipo:GAME` (padrao) ou `tipo:MOVIE`.
 - Ranking do `/review acao:top`: soma de estrelas (total), desempate por numero de avaliacoes, media e nome.
 
 ### Comandos /review
-- `/review acao:add nome:<texto> estrelas:<1..5> categoria:<AMEI|JOGAVEL|RUIM> opiniao:<texto> plataforma:<opcional> tags:<CSV> favorito:<opcional>`
-- `/review acao:remove nome:<texto>`
-- `/review acao:view nome:<texto>`
-- `/review acao:my categoria:<opcional> ordenar:<stars|recent>`
-- `/review acao:top categoria:<opcional> min_avaliacoes:<opcional> limite:<opcional>` (padrao: ranking geral, min 1, limite 10)
-- `/review acao:favorite nome:<texto>`
+- `/review acao:add tipo:<GAME|MOVIE> nome:<texto> estrelas:<1..5> categoria:<AMEI|JOGAVEL|RUIM> opiniao:<texto> plataforma:<opcional> tags:<CSV> favorito:<opcional> romance_fechado:<opcional>`
+- `/review acao:remove tipo:<GAME|MOVIE> nome:<texto>`
+- `/review acao:view tipo:<GAME|MOVIE> nome:<texto>`
+- `/review acao:my tipo:<GAME|MOVIE> categoria:<opcional> ordenar:<stars|recent>`
+- `/review acao:top tipo:<GAME|MOVIE> categoria:<opcional> min_avaliacoes:<opcional> limite:<opcional>` (padrao: tipo GAME, min 1, limite 10)
+- `/review acao:favorite tipo:<GAME|MOVIE> nome:<texto>`
 
 ### Exemplos
-- `/review acao:add nome:"Baldur's Gate 3" estrelas:5 categoria:AMEI opiniao:"Insano." tags:"historia, combate" favorito:true`
-- `/review acao:view nome:"Baldur's Gate 3"`
-- `/review acao:top categoria:AMEI limite:10`
-- `/review acao:favorite nome:"Baldur's Gate 3"`
+- `/review acao:add tipo:GAME nome:"Baldur's Gate 3" estrelas:5 categoria:AMEI opiniao:"Insano." tags:"historia, combate" favorito:true`
+- `/review acao:add tipo:MOVIE nome:"Your Name" estrelas:5 categoria:AMEI opiniao:"Lindo." romance_fechado:true`
+- `/review acao:view tipo:GAME nome:"Baldur's Gate 3"`
+- `/review acao:top tipo:GAME categoria:AMEI limite:10`
+- `/review acao:favorite tipo:MOVIE nome:"Your Name"`
+
+## Recomendacoes
+- `/recomendar jogo` usa suas reviews e o ranking do servidor.
+- `/recomendar filme genero:<opcional> romance_fechado:<opcional>` prioriza filmes com final fechado quando solicitado.
+- `/recomendar tutorial` sugere temas com base nas suas tags.
 
 ## Perfil com paginas
 - O `/perfil` abre um painel com botoes: Perfil, Conquistas, Historico, Reviews e Fechar.
