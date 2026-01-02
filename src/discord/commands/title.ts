@@ -30,7 +30,7 @@ const ACTION_CHOICES = [
 ];
 
 export async function executeTitleAdd(interaction: ChatInputCommandInteraction): Promise<void> {
-  const profile = getPlayerProfile(interaction.user.id);
+  const profile = getPlayerProfile(interaction.user.id, interaction.guildId ?? null);
   if (!profile) {
     await safeRespond(interaction, `${EMOJI_WARNING} Voce precisa se registrar com /register antes de equipar titulos.`);
     return;
@@ -76,7 +76,7 @@ export async function executeTitleAdd(interaction: ChatInputCommandInteraction):
 }
 
 export async function executeTitleRemove(interaction: ChatInputCommandInteraction): Promise<void> {
-  const profile = getPlayerProfile(interaction.user.id);
+  const profile = getPlayerProfile(interaction.user.id, interaction.guildId ?? null);
   if (!profile) {
     await safeRespond(interaction, `${EMOJI_WARNING} Voce precisa se registrar com /register antes de remover titulos.`);
     return;

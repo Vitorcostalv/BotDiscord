@@ -38,9 +38,44 @@ const commands = [
   sobreCommand.data,
 ];
 
+type CommandOption = {
+  required?: boolean;
+  options?: CommandOption[];
+};
+
+function normalizeOptions(options?: CommandOption[]): void {
+  if (!options?.length) return;
+
+  const required = options.filter((option) => option.required);
+  const optional = options.filter((option) => !option.required);
+  const normalized = required.concat(optional);
+
+  let changed = false;
+  for (let i = 0; i < normalized.length; i += 1) {
+    if (normalized[i] !== options[i]) {
+      changed = true;
+      break;
+    }
+  }
+
+  if (changed) {
+    options.splice(0, options.length, ...normalized);
+  }
+
+  for (const option of options) {
+    if (option.options?.length) {
+      normalizeOptions(option.options);
+    }
+  }
+}
+
 export async function registerCommands(): Promise<void> {
   const rest = new REST({ version: '10' }).setToken(env.discordToken);
   await rest.put(Routes.applicationCommands(env.discordAppId), {
-    body: commands.map((cmd) => (cmd as SlashCommandBuilder).toJSON()),
+    body: commands.map((cmd) => {
+      const json = (cmd as SlashCommandBuilder).toJSON();
+      normalizeOptions(json.options as CommandOption[] | undefined);
+      return json;
+    }),
   });
 }

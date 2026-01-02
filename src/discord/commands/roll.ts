@@ -104,12 +104,12 @@ export const rollCommand = {
       appendProfileHistory(interaction.user.id, {
         type: 'roll',
         label: formatHistoryRoll(`${result.count}d${result.sides}`, result.rolls, result.total),
-      });
+      }, interaction.guildId ?? null);
 
       const intro = formatSuziIntro(interaction.user.id, {
         displayName: interaction.user.globalName ?? interaction.user.username,
         kind: 'roll',
-      });
+      }, interaction.guildId ?? null);
 
       const embed = createSuziEmbed('primary')
         .setTitle(`${EMOJI_DICE} Rolagem de Dados`)
@@ -134,12 +134,18 @@ export const rollCommand = {
           min,
           max,
           guildId: interaction.guildId ?? undefined,
+          results: result.rolls,
         });
       } catch (error) {
         logWarn('SUZI-STORE-002', error, { message: 'Falha ao salvar rollHistory', userId: interaction.user.id });
       }
 
-      const xpResult = awardXp(interaction.user.id, 2, { reason: 'roll', cooldownSeconds: 5 });
+      const xpResult = awardXp(
+        interaction.user.id,
+        2,
+        { reason: 'roll', cooldownSeconds: 5 },
+        interaction.guildId ?? null,
+      );
       if (xpResult.leveledUp) {
         await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
       }

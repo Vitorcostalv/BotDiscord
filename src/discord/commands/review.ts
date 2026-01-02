@@ -374,7 +374,7 @@ export const reviewCommand = {
           .slice(0, 3)
           .map((entry) => {
             const opinion = safeText(entry.review.opinion, 80);
-            return `- <@${entry.userId}> ${formatStars(entry.review.stars)} ${formatCategory(entry.review.category)}\n  \"${opinion}\"`;
+            return `- <@${entry.userId}> ${formatStars(entry.review.stars)} ${formatCategory(entry.review.category)}\n  "${opinion}"`;
           });
 
         const embed = createSuziEmbed('primary')

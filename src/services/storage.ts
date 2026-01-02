@@ -1,5 +1,13 @@
 import { join } from 'path';
 
+import { isDbAvailable } from '../db/index.js';
+import {
+  appendQuestionHistory as appendQuestionHistoryDb,
+  getQuestionHistory as getQuestionHistoryDb,
+  getUserPreferences as getUserPreferencesDb,
+  saveUserPreferences as saveUserPreferencesDb,
+} from '../repositories/storageRepo.js';
+
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
 type UserHistoryEntry = {
@@ -113,6 +121,21 @@ export function appendQuestionHistory(
   questionType: QuestionType,
   entry: Omit<QuestionHistoryEntry, 'timestamp' | 'questionType' | 'guildId' | 'type'>,
 ): QuestionHistoryEntry[] {
+  if (isDbAvailable()) {
+    try {
+      const updated = appendQuestionHistoryDb(guildId ?? null, userId, questionType, entry);
+      return updated.map((item) => ({
+        type: 'pergunta',
+        questionType,
+        content: item.content,
+        response: item.response,
+        timestamp: item.timestamp,
+        guildId: item.guildId,
+      }));
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   const userData = store[userId] ?? { history: [], preferences: {} };
   const guildKey = guildId ?? 'dm';
@@ -136,6 +159,21 @@ export function getQuestionHistory(
   guildId: string | null,
   questionType: QuestionType,
 ): QuestionHistoryEntry[] {
+  if (isDbAvailable()) {
+    try {
+      const entries = getQuestionHistoryDb(guildId ?? null, userId, questionType);
+      return entries.map((entry) => ({
+        type: 'pergunta',
+        questionType,
+        content: entry.content,
+        response: entry.response,
+        timestamp: entry.timestamp,
+        guildId: entry.guildId,
+      }));
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   const guildKey = guildId ?? 'dm';
   const direct = store[userId]?.questionHistory?.[guildKey]?.[questionType] ?? [];
@@ -156,6 +194,13 @@ export function getQuestionHistory(
 }
 
 export function savePreferences(userId: string, prefs: UserPreferences): UserPreferences {
+  if (isDbAvailable()) {
+    try {
+      return saveUserPreferencesDb(null, userId, prefs);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   const userData = store[userId] ?? { history: [], preferences: {} };
   const updatedPrefs = { ...userData.preferences, ...prefs };
@@ -165,6 +210,13 @@ export function savePreferences(userId: string, prefs: UserPreferences): UserPre
 }
 
 export function getPreferences(userId: string): UserPreferences {
+  if (isDbAvailable()) {
+    try {
+      return getUserPreferencesDb(null, userId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   return store[userId]?.preferences ?? {};
 }

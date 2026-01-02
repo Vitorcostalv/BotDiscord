@@ -1,14 +1,16 @@
-import { join } from 'path';
+﻿import { join } from 'path';
 
 import type { AchievementDefinition } from '../achievements/definitions.js';
+import { isDbAvailable } from '../db/index.js';
+import {
+  getUserTitleState as getUserTitleStateDb,
+  setEquippedTitle as setEquippedTitleDb,
+  unlockTitle as unlockTitleDb,
+  upsertTitleDefinitions,
+} from '../repositories/titleRepo.js';
 
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
-
-export type TitleDefinition = {
-  id: string;
-  label: string;
-  description: string;
-};
+import { ACHIEVEMENT_TITLE_REWARDS, CLASS_TITLES, TITLE_DEFINITIONS, type TitleDefinition } from './titleData.js';
 
 export type UserTitleState = {
   equipped?: string | null;
@@ -19,56 +21,23 @@ type TitleStore = Record<string, UserTitleState>;
 
 const TITLES_PATH = join(process.cwd(), 'data', 'titles.json');
 
-const TITLE_DEFINITIONS: TitleDefinition[] = [
-  {
-    id: 'GUIDE_VIVO',
-    label: '🎮 Guia Vivo',
-    description: 'Desbloqueado ao dominar dezenas de jogos.',
-  },
-  {
-    id: 'ENCICLOPEDIA',
-    label: '🧠 Enciclopédia',
-    description: 'Para quem ja viu (e perguntou) de tudo.',
-  },
-  {
-    id: 'CEM_ROLAGENS',
-    label: '🎲 Cem Rolagens',
-    description: 'Veterano das mesas e dos dados.',
-  },
-  {
-    id: 'TEMPESTADE',
-    label: '🌪️ Tempestade',
-    description: 'Rola dezenas de dados como quem respira.',
-  },
-  {
-    id: 'CRITICO_DUPLO',
-    label: '💥 Crítico Duplo',
-    description: 'Dois 20 em pouco tempo. Lenda viva.',
-  },
-  {
-    id: 'NOTURNO',
-    label: '🦉 Guardião Noturno',
-    description: 'Presenca firme nas madrugadas.',
-  },
-];
+let titlesSynced = false;
 
-const ACHIEVEMENT_TITLE_REWARDS: Record<string, string> = {
-  GAME_100: 'GUIDE_VIVO',
-  QUESTION_200: 'ENCICLOPEDIA',
-  ROLL_100_TOTAL: 'CEM_ROLAGENS',
-  BIG_ROLL: 'TEMPESTADE',
-  DOUBLE_CRIT: 'CRITICO_DUPLO',
-  NIGHT_OWL: 'NOTURNO',
-};
-
-const CLASS_TITLES: Record<string, string> = {
-  guerreiro: '⚔️ Lâmina da Vanguarda',
-  mago: '🧙 Arcanista do Crepúsculo',
-  arqueiro: '🏹 Olho de Névoa',
-  ladino: '🗡️ Sombra Sorridente',
-  clerigo: '✨ Voz da Luz',
-  paladino: '🛡️ Juramento de Aço',
-};
+function ensureTitleDefinitions(): void {
+  if (!isDbAvailable() || titlesSynced) return;
+  try {
+    upsertTitleDefinitions(
+      TITLE_DEFINITIONS.map((title) => ({
+        id: title.id,
+        label: title.label,
+        description: title.description,
+      })),
+    );
+    titlesSynced = true;
+  } catch {
+    // fallback to JSON
+  }
+}
 
 function normalize(value: string): string {
   return value
@@ -110,10 +79,18 @@ export function getTitleLabel(idOrText: string): string {
 
 export function getAutoTitleForClass(className: string): string {
   const key = normalize(className);
-  return CLASS_TITLES[key] ?? '🌙 Viajante';
+  return CLASS_TITLES[key] ?? 'Viajante';
 }
 
-export function getUserTitleState(userId: string): UserTitleState {
+export function getUserTitleState(userId: string, guildId?: string | null): UserTitleState {
+  if (isDbAvailable()) {
+    try {
+      ensureTitleDefinitions();
+      return getUserTitleStateDb(guildId ?? null, userId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<TitleStore>(TITLES_PATH, {});
   const state = store[userId] ?? getDefaultState();
   return {
@@ -122,19 +99,33 @@ export function getUserTitleState(userId: string): UserTitleState {
   };
 }
 
-export function isTitleUnlocked(userId: string, titleId: string): boolean {
-  const state = getUserTitleState(userId);
+export function isTitleUnlocked(userId: string, titleId: string, guildId?: string | null): boolean {
+  const state = getUserTitleState(userId, guildId);
   return Boolean(state.unlocked[titleId]);
 }
 
-export function getUnlockedTitles(userId: string): TitleDefinition[] {
-  const state = getUserTitleState(userId);
+export function getUnlockedTitles(userId: string, guildId?: string | null): TitleDefinition[] {
+  const state = getUserTitleState(userId, guildId);
   return TITLE_DEFINITIONS.filter((title) => state.unlocked[title.id]);
 }
 
-export function equipTitle(userId: string, input: string): TitleDefinition | null {
+export function equipTitle(userId: string, input: string, guildId?: string | null): TitleDefinition | null {
   const definition = resolveTitleId(input);
   if (!definition) return null;
+
+  if (isDbAvailable()) {
+    try {
+      ensureTitleDefinitions();
+      const state = getUserTitleStateDb(guildId ?? null, userId);
+      if (!state.unlocked[definition.id]) {
+        return null;
+      }
+      setEquippedTitleDb(guildId ?? null, userId, definition.id);
+      return definition;
+    } catch {
+      // fallback to JSON
+    }
+  }
 
   const store = readJsonFile<TitleStore>(TITLES_PATH, {});
   const state = store[userId] ?? getDefaultState();
@@ -147,7 +138,16 @@ export function equipTitle(userId: string, input: string): TitleDefinition | nul
   return definition;
 }
 
-export function clearEquippedTitle(userId: string): void {
+export function clearEquippedTitle(userId: string, guildId?: string | null): void {
+  if (isDbAvailable()) {
+    try {
+      ensureTitleDefinitions();
+      setEquippedTitleDb(guildId ?? null, userId, null);
+      return;
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<TitleStore>(TITLES_PATH, {});
   const state = store[userId] ?? getDefaultState();
   store[userId] = { ...state, equipped: null };
@@ -157,8 +157,34 @@ export function clearEquippedTitle(userId: string): void {
 export function unlockTitlesFromAchievements(
   userId: string,
   achievements: AchievementDefinition[],
+  guildId?: string | null,
 ): TitleDefinition[] {
   if (!achievements.length) return [];
+  if (isDbAvailable()) {
+    try {
+      ensureTitleDefinitions();
+      const state = getUserTitleStateDb(guildId ?? null, userId);
+      const unlocked = { ...state.unlocked };
+      const now = Date.now();
+      const newlyUnlocked: TitleDefinition[] = [];
+
+      for (const achievement of achievements) {
+        const titleId = ACHIEVEMENT_TITLE_REWARDS[achievement.id];
+        if (!titleId || unlocked[titleId]) continue;
+        unlocked[titleId] = now;
+        unlockTitleDb(guildId ?? null, userId, titleId, now);
+        const definition = TITLE_DEFINITIONS.find((title) => title.id === titleId);
+        if (definition) {
+          newlyUnlocked.push(definition);
+        }
+      }
+
+      return newlyUnlocked;
+    } catch {
+      // fallback to JSON
+    }
+  }
+
   const store = readJsonFile<TitleStore>(TITLES_PATH, {});
   const state = store[userId] ?? getDefaultState();
   const unlocked = { ...state.unlocked };
@@ -182,3 +208,6 @@ export function unlockTitlesFromAchievements(
 
   return newlyUnlocked;
 }
+
+
+

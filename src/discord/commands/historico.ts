@@ -30,7 +30,7 @@ export const historicoCommand = {
       const targetUser = interaction.options.getUser('user') ?? interaction.user;
       const limitOption = interaction.options.getInteger('limite') ?? 5;
       const limit = Math.min(Math.max(limitOption, 1), 10);
-      const rolls = getUserRolls(targetUser.id, limit);
+      const rolls = getUserRolls(targetUser.id, limit, interaction.guildId ?? null);
 
       const embed = createSuziEmbed('primary')
         .setTitle(`${EMOJI_SCROLL} Historico de Rolagens`)

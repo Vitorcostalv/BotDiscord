@@ -56,14 +56,14 @@ export const nivelCommand = {
     }
 
     try {
-      const profile = getPlayerProfile(target.id);
+      const profile = getPlayerProfile(target.id, interaction.guildId ?? null);
       if (!profile) {
         const embed = buildMissingProfileEmbed(target);
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
 
-      const updated = updatePlayerLevel(target.id, level, interaction.user.id);
+      const updated = updatePlayerLevel(target.id, level, interaction.user.id, interaction.guildId ?? null);
       if (!updated) {
         await safeRespond(interaction, `${EMOJI_WARNING} Nao consegui atualizar o nivel agora.`);
         return;
@@ -72,7 +72,7 @@ export const nivelCommand = {
       appendProfileHistory(target.id, {
         type: 'nivel',
         label: `Nivel ${level}`,
-      });
+      }, interaction.guildId ?? null);
 
       const embed = createSuziEmbed('success')
         .setTitle(`${EMOJI_STAR} Nivel atualizado`)
@@ -85,7 +85,7 @@ export const nivelCommand = {
       await safeRespond(interaction, { embeds: [embed] });
 
       if (isSelf) {
-        const xpResult = awardXp(interaction.user.id, 1, { reason: 'nivel' });
+        const xpResult = awardXp(interaction.user.id, 1, { reason: 'nivel' }, interaction.guildId ?? null);
         if (xpResult.leveledUp) {
           await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
         }

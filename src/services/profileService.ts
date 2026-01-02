@@ -1,5 +1,14 @@
 ﻿import { join } from 'path';
 
+import { isDbAvailable } from '../db/index.js';
+import {
+  clearProfileBanner as clearProfileBannerDb,
+  getUserProfile as getUserProfileDb,
+  setProfileBanner as setProfileBannerDb,
+  upsertUserProfile as upsertUserProfileDb,
+  updatePlayerLevel as updatePlayerLevelDb,
+} from '../repositories/profileRepo.js';
+
 import { getHistory } from './historyService.js';
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
@@ -43,12 +52,31 @@ function shouldSkipIntro(lastTs?: number): boolean {
   return Date.now() - lastTs < 60_000;
 }
 
-export function getPlayerProfile(userId: string): PlayerProfile | null {
+export function getPlayerProfile(userId: string, guildId?: string | null): PlayerProfile | null {
+  if (isDbAvailable()) {
+    try {
+      return getUserProfileDb(guildId ?? null, userId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
   return store[userId] ?? null;
 }
 
-export function upsertPlayerProfile(userId: string, data: PlayerInput, actorId?: string): PlayerProfile {
+export function upsertPlayerProfile(
+  userId: string,
+  data: PlayerInput,
+  actorId?: string,
+  guildId?: string | null,
+): PlayerProfile {
+  if (isDbAvailable()) {
+    try {
+      return upsertUserProfileDb(guildId ?? null, userId, data, actorId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
   const now = Date.now();
   const existing = store[userId];
@@ -72,7 +100,19 @@ export function upsertPlayerProfile(userId: string, data: PlayerInput, actorId?:
   return profile;
 }
 
-export function updatePlayerLevel(userId: string, level: number, actorId?: string): PlayerProfile | null {
+export function updatePlayerLevel(
+  userId: string,
+  level: number,
+  actorId?: string,
+  guildId?: string | null,
+): PlayerProfile | null {
+  if (isDbAvailable()) {
+    try {
+      return updatePlayerLevelDb(guildId ?? null, userId, level, actorId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
   const existing = store[userId];
   if (!existing) {
@@ -89,7 +129,19 @@ export function updatePlayerLevel(userId: string, level: number, actorId?: strin
   return updated;
 }
 
-export function setProfileBanner(userId: string, bannerUrl: string, actorId?: string): PlayerProfile | null {
+export function setProfileBanner(
+  userId: string,
+  bannerUrl: string,
+  actorId?: string,
+  guildId?: string | null,
+): PlayerProfile | null {
+  if (isDbAvailable()) {
+    try {
+      return setProfileBannerDb(guildId ?? null, userId, bannerUrl, actorId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
   const existing = store[userId];
   if (!existing) {
@@ -106,7 +158,18 @@ export function setProfileBanner(userId: string, bannerUrl: string, actorId?: st
   return updated;
 }
 
-export function clearProfileBanner(userId: string, actorId?: string): PlayerProfile | null {
+export function clearProfileBanner(
+  userId: string,
+  actorId?: string,
+  guildId?: string | null,
+): PlayerProfile | null {
+  if (isDbAvailable()) {
+    try {
+      return clearProfileBannerDb(guildId ?? null, userId, actorId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<PlayerStore>(PLAYERS_PATH, {});
   const existing = store[userId];
   if (!existing) {
@@ -123,8 +186,12 @@ export function clearProfileBanner(userId: string, actorId?: string): PlayerProf
   return updated;
 }
 
-export function formatSuziIntro(userId: string, context: SuziIntroContext): string {
-  const history = getHistory(userId, 1);
+export function formatSuziIntro(
+  userId: string,
+  context: SuziIntroContext,
+  guildId?: string | null,
+): string {
+  const history = getHistory(userId, 1, guildId ?? null);
   if (shouldSkipIntro(history[0]?.ts)) {
     return '';
   }

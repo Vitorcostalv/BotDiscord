@@ -1,4 +1,5 @@
 import { assertEnv, env } from './config/env.js';
+import { initDatabase } from './db/index.js';
 import { createClient } from './discord/client.js';
 import { ajudaCommand } from './discord/commands/ajuda.js';
 import { conquistasCommand } from './discord/commands/conquistas.js';
@@ -21,6 +22,7 @@ import { safeReply } from './utils/interactions.js';
 import { logError, logInfo } from './utils/logging.js';
 
 assertEnv();
+initDatabase();
 
 process.on('unhandledRejection', (reason) => {
   logError('SUZI-RUNTIME-001', reason, { message: 'Unhandled rejection' });

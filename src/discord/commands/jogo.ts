@@ -47,7 +47,7 @@ export const jogoCommand = {
       const gameName = interaction.options.getString('nome', true);
       const platform = interaction.options.getString('plataforma') ?? undefined;
       const prefs = getPreferences(userId);
-      const userProfile = getPlayerProfile(userId);
+      const userProfile = getPlayerProfile(userId, interaction.guildId ?? null);
 
       const question = [
         `Quero dicas rapidas para o jogo ${gameName}.`,
@@ -70,19 +70,19 @@ export const jogoCommand = {
         appendProfileHistory(userId, {
           type: 'jogo',
           label: platform ? `${gameName} (${platform})` : gameName,
-        });
+        }, interaction.guildId ?? null);
 
         const intro = formatSuziIntro(userId, {
           displayName: interaction.user.globalName ?? interaction.user.username,
           kind: 'jogo',
-        });
+        }, interaction.guildId ?? null);
 
         const content = intro
           ? `${intro}\n\n${withLeadingEmoji(response, EMOJI_GAME)}`
           : withLeadingEmoji(response, EMOJI_GAME);
         await safeRespond(interaction, content);
 
-        const xpResult = awardXp(userId, 5, { reason: 'jogo', cooldownSeconds: 10 });
+        const xpResult = awardXp(userId, 5, { reason: 'jogo', cooldownSeconds: 10 }, interaction.guildId ?? null);
         if (xpResult.leveledUp) {
           await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
         }

@@ -2,7 +2,6 @@
 
 import {
   getGuildReviewSummary,
-  getUserReviewCount,
   getUserTagSummary,
   isRomanceClosed,
   listItemsByTags,

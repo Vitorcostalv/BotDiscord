@@ -1,8 +1,8 @@
 import { logError, logWarn, logInfo } from '../utils/logging.js';
 
+import { parseDice, rollDice } from './dice.js';
 import type { PlayerProfile } from './profileService.js';
 import type { QuestionType } from './storage.js';
-import { parseDice, rollDice } from './dice.js';
 
 type GeminiInput = {
   question: string;

@@ -148,7 +148,7 @@ export const steamCommand = {
           return;
         }
 
-        const existing = getSteamLink(targetUser.id);
+        const existing = getSteamLink(targetUser.id, interaction.guildId ?? null);
         if (existing && !force) {
           const embed = createSuziEmbed('warning')
             .setTitle('Vinculo ja existe')
@@ -157,7 +157,10 @@ export const steamCommand = {
           return;
         }
 
-        const summaryResult = await getCachedSummary(steamId64, { force: true });
+        const summaryResult = await getCachedSummary(steamId64, {
+          force: true,
+          guildId: interaction.guildId ?? null,
+        });
         if (!summaryResult.ok && summaryResult.reason === 'NOT_FOUND') {
           const embed = createSuziEmbed('warning')
             .setTitle('Nao foi possivel vincular')
@@ -166,7 +169,7 @@ export const steamCommand = {
           return;
         }
 
-        linkSteam(targetUser.id, steamId64, interaction.user.id);
+        linkSteam(targetUser.id, steamId64, interaction.user.id, interaction.guildId ?? null);
 
         const embed = createSuziEmbed('success')
           .setTitle(`${EMOJI_LINK} Steam vinculado`)
@@ -197,7 +200,7 @@ export const steamCommand = {
           return;
         }
 
-        const removed = unlinkSteam(targetUser.id);
+        const removed = unlinkSteam(targetUser.id, interaction.guildId ?? null);
         if (!removed) {
           const embed = createSuziEmbed('warning')
             .setTitle('Nenhum vinculo encontrado')
@@ -215,7 +218,7 @@ export const steamCommand = {
 
       if (action === 'view' || action === 'refresh') {
         const targetUser = interaction.options.getUser('user') ?? interaction.user;
-        const link = getSteamLink(targetUser.id);
+        const link = getSteamLink(targetUser.id, interaction.guildId ?? null);
         if (!link) {
           const embed = createSuziEmbed('warning')
             .setTitle('Nenhum Steam vinculado')
@@ -224,7 +227,10 @@ export const steamCommand = {
           return;
         }
 
-        const summaryResult = await getCachedSummary(link.steamId64, { force: action === 'refresh' });
+        const summaryResult = await getCachedSummary(link.steamId64, {
+          force: action === 'refresh',
+          guildId: interaction.guildId ?? null,
+        });
         if (!summaryResult.ok) {
           const embed = createSuziEmbed('warning')
             .setTitle(`${EMOJI_WARNING} Steam indisponivel`)

@@ -5,8 +5,8 @@ import { generateGeminiAnswerWithMeta, type GeminiAnswerResult } from '../../ser
 import { bumpUsage } from '../../services/geminiUsageService.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro, getPlayerProfile } from '../../services/profileService.js';
-import { appendQuestionHistory, getQuestionHistory, type QuestionType } from '../../services/storage.js';
 import { listTopItems } from '../../services/reviewService.js';
+import { appendQuestionHistory, getQuestionHistory, type QuestionType } from '../../services/storage.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { awardXp } from '../../services/xpService.js';
 import { toPublicMessage } from '../../utils/errors.js';
@@ -61,7 +61,7 @@ export const perguntaCommand = {
       try {
         const history = getQuestionHistory(userId, interaction.guildId, questionType);
         const historyLines = history.map((h) => `${h.type}/${h.questionType}: ${h.content} -> ${h.response}`);
-        const userProfile = getPlayerProfile(userId);
+        const userProfile = getPlayerProfile(userId, interaction.guildId ?? null);
 
         let scopeHint = '';
         const wantsRomanceClosed =
@@ -104,12 +104,12 @@ export const perguntaCommand = {
         appendProfileHistory(userId, {
           type: 'pergunta',
           label: safeText(question, 50),
-        });
+        }, interaction.guildId ?? null);
 
         const intro = formatSuziIntro(userId, {
           displayName: interaction.user.globalName ?? interaction.user.username,
           kind: 'pergunta',
-        });
+        }, interaction.guildId ?? null);
 
         const embed = createSuziEmbed('primary')
           .setTitle(`${EMOJI_BRAIN} Pergunta & Resposta`)
@@ -124,7 +124,7 @@ export const perguntaCommand = {
 
         await safeRespond(interaction, { embeds: [embed] });
 
-        const xpResult = awardXp(userId, 5, { reason: 'pergunta', cooldownSeconds: 10 });
+        const xpResult = awardXp(userId, 5, { reason: 'pergunta', cooldownSeconds: 10 }, interaction.guildId ?? null);
         if (xpResult.leveledUp) {
           await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
         }

@@ -174,7 +174,7 @@ export const perfilCommand = {
     const bannerUrl = interaction.options.getString('url');
 
     try {
-      const profile = getPlayerProfile(target.id);
+      const profile = getPlayerProfile(target.id, interaction.guildId ?? null);
       if (!profile) {
         const embed = buildMissingProfileEmbed(target);
         await safeRespond(interaction, { embeds: [embed] });
@@ -206,7 +206,12 @@ export const perfilCommand = {
             await safeRespond(interaction, { embeds: [embed] });
             return;
           }
-          const updated = setProfileBanner(interaction.user.id, validation.url, interaction.user.id);
+          const updated = setProfileBanner(
+            interaction.user.id,
+            validation.url,
+            interaction.user.id,
+            interaction.guildId ?? null,
+          );
           if (!updated) {
             const embed = createSuziEmbed('warning')
               .setTitle('Nao consegui salvar')
@@ -222,7 +227,7 @@ export const perfilCommand = {
         }
 
         if (bannerAction === 'clear') {
-          const updated = clearProfileBanner(interaction.user.id, interaction.user.id);
+          const updated = clearProfileBanner(interaction.user.id, interaction.user.id, interaction.guildId ?? null);
           if (!updated) {
             const embed = createSuziEmbed('warning')
               .setTitle('Nao consegui remover')
@@ -243,10 +248,10 @@ export const perfilCommand = {
       const unlockedMap = new Map(achievementsState.unlockedList.map((entry) => [entry.id, entry.unlockedAt]));
       const unlocked = definitions.filter((definition) => unlockedMap.has(definition.id));
 
-      const xpState = getUserXp(target.id);
+      const xpState = getUserXp(target.id, interaction.guildId ?? null);
       const progress = getXpProgress(xpState);
 
-      const rolls = getUserRolls(target.id, 5);
+      const rolls = getUserRolls(target.id, 5, interaction.guildId ?? null);
       const historyEntries = rolls.map((entry) => ({
         expr: entry.expr,
         total: entry.total,

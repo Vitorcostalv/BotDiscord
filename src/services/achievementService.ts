@@ -9,6 +9,12 @@ import {
   type AchievementPayload,
   type AchievementUserState,
 } from '../achievements/definitions.js';
+import { isDbAvailable } from '../db/index.js';
+import {
+  getUserAchievementState,
+  saveUserAchievementState,
+  upsertAchievementDefinitions,
+} from '../repositories/achievementRepo.js';
 
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
@@ -46,6 +52,25 @@ const DEFAULT_COUNTERS: AchievementCounters = {
 const DEFAULT_META: AchievementMeta = {
   profileDays: [],
 };
+
+let definitionsSynced = false;
+
+function ensureDefinitions(): void {
+  if (!isDbAvailable() || definitionsSynced) return;
+  try {
+    upsertAchievementDefinitions(
+      ACHIEVEMENTS.map((achievement) => ({
+        key: achievement.id,
+        name: achievement.name,
+        emoji: achievement.emoji,
+        description: achievement.description,
+      })),
+    );
+    definitionsSynced = true;
+  } catch {
+    // ignore, fallback to JSON
+  }
+}
 
 function todayKey(timestamp: number): string {
   const date = new Date(timestamp);
@@ -143,6 +168,21 @@ export function listAllAchievements(): AchievementDefinition[] {
 }
 
 export function getUserAchievements(userId: string): UserAchievements {
+  if (isDbAvailable()) {
+    try {
+      ensureDefinitions();
+      const state = getUserAchievementState(null, userId, {
+        counters: { ...DEFAULT_COUNTERS },
+        meta: { ...DEFAULT_META, profileDays: [...(DEFAULT_META.profileDays ?? [])] },
+      });
+      return {
+        unlockedList: [...state.unlocked],
+        counters: { ...(state.counters as AchievementCounters) },
+      };
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<AchievementStore>(ACHIEVEMENTS_PATH, {});
   const state = normalizeState(store[userId]);
   return { unlockedList: [...state.unlocked], counters: { ...state.counters } };
@@ -153,6 +193,67 @@ export function trackEvent(
   eventName: AchievementEventName,
   payload: AchievementPayload = {},
 ): { unlocked: AchievementDefinition[]; state: UserAchievements } {
+  if (isDbAvailable()) {
+    try {
+      ensureDefinitions();
+      const dbState = getUserAchievementState(null, userId, {
+        counters: { ...DEFAULT_COUNTERS },
+        meta: { ...DEFAULT_META, profileDays: [...(DEFAULT_META.profileDays ?? [])] },
+      });
+      const state: UserAchievementState = {
+        counters: { ...DEFAULT_COUNTERS, ...(dbState.counters ?? {}) },
+        unlocked: [...(dbState.unlocked ?? [])],
+        meta: {
+          lastD20CritTs: (dbState.meta as AchievementMeta)?.lastD20CritTs,
+          lastRegisterDay: (dbState.meta as AchievementMeta)?.lastRegisterDay,
+          lastRollDay: (dbState.meta as AchievementMeta)?.lastRollDay,
+          profileDays: [...(((dbState.meta as AchievementMeta)?.profileDays ?? []) as string[])],
+        },
+      };
+
+      incrementCounters(state.counters, eventName, payload);
+
+      const now = Date.now();
+      const dayKey = payload.dayKey ?? todayKey(now);
+      const hour = typeof payload.hour === 'number' ? payload.hour : new Date(now).getHours();
+      const { meta, doubleCrit } = updateMeta(state.meta, eventName, payload, now, dayKey);
+
+      const normalizedPayload: AchievementPayload = {
+        ...payload,
+        dayKey,
+        hour,
+        doubleCrit,
+      };
+
+      const unlockedIds = new Set(state.unlocked.map((entry) => entry.id));
+      const userState: AchievementUserState = { counters: { ...state.counters }, meta };
+      const newlyUnlocked: AchievementDefinition[] = [];
+
+      for (const achievement of ACHIEVEMENTS) {
+        if (unlockedIds.has(achievement.id)) continue;
+        if (achievement.condition(eventName, normalizedPayload, userState)) {
+          unlockedIds.add(achievement.id);
+          state.unlocked.push({ id: achievement.id, unlockedAt: now });
+          newlyUnlocked.push(achievement);
+        }
+      }
+
+      state.meta = meta;
+      saveUserAchievementState(null, userId, {
+        counters: state.counters,
+        meta: state.meta as Record<string, unknown>,
+        unlocked: state.unlocked,
+      });
+
+      return {
+        unlocked: newlyUnlocked,
+        state: { unlockedList: [...state.unlocked], counters: { ...state.counters } },
+      };
+    } catch {
+      // fallback to JSON
+    }
+  }
+
   const store = readJsonFile<AchievementStore>(ACHIEVEMENTS_PATH, {});
   const state = normalizeState(store[userId]);
 

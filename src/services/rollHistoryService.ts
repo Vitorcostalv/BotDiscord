@@ -1,5 +1,8 @@
 import { join } from 'path';
 
+import { isDbAvailable } from '../db/index.js';
+import { addRollEntry, getGuildRollStats, getUserRolls as getUserRollsDb } from '../repositories/historyRepo.js';
+
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
 export type RollHistoryEntry = {
@@ -9,6 +12,7 @@ export type RollHistoryEntry = {
   min: number;
   max: number;
   guildId?: string;
+  results?: number[];
 };
 
 type RollHistoryStore = Record<string, RollHistoryEntry[]>;
@@ -36,6 +40,20 @@ export function addRoll(
   userId: string,
   entry: Omit<RollHistoryEntry, 'ts'> & { ts?: number },
 ): RollHistoryEntry[] {
+  if (isDbAvailable()) {
+    try {
+      return addRollEntry(entry.guildId ?? null, userId, {
+        ts: entry.ts ?? Date.now(),
+        expr: entry.expr,
+        total: entry.total,
+        min: entry.min,
+        max: entry.max,
+        results: entry.results ?? [],
+      });
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   const items = store[userId] ?? [];
   const item: RollHistoryEntry = { ...entry, ts: entry.ts ?? Date.now() };
@@ -45,13 +63,33 @@ export function addRoll(
   return updated;
 }
 
-export function getUserRolls(userId: string, limit = 5): RollHistoryEntry[] {
+export function getUserRolls(userId: string, limit = 5, guildId?: string | null): RollHistoryEntry[] {
+  if (isDbAvailable()) {
+    try {
+      return getUserRollsDb(guildId ?? null, userId, limit).map((entry) => ({
+        ts: entry.ts,
+        expr: entry.expr,
+        total: entry.total,
+        min: entry.min,
+        max: entry.max,
+      }));
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   const items = store[userId] ?? [];
   return items.slice(0, limit);
 }
 
 export function getGuildStats(guildId: string): RollStats {
+  if (isDbAvailable()) {
+    try {
+      return getGuildRollStats(guildId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   const since = Date.now() - DAY_MS;
   const countsAll = new Map<string, number>();

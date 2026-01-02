@@ -17,6 +17,8 @@ export const env = {
   steamApiKey: process.env.STEAM_API_KEY ?? '',
   profileBannerUrl: process.env.PROFILE_BANNER_URL ?? '',
   defaultProfileBannerUrl: process.env.DEFAULT_PROFILE_BANNER_URL ?? '',
+  databaseUrl: process.env.DATABASE_URL ?? './data/suzi.db',
+  migrateFromJson: process.env.MIGRATE_FROM_JSON === 'true',
 };
 
 export function assertEnv(): void {

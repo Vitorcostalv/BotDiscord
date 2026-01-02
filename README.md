@@ -26,10 +26,18 @@
 - `LLM_API_KEY` (opcional, stub de LLM legacy)
 - `DEFAULT_PROFILE_BANNER_URL` (opcional, banner padrao no /perfil)
 - `PROFILE_BANNER_URL` (opcional, legado para banner no /perfil)
+- `DATABASE_URL` (opcional, padrao: `./data/suzi.db`)
+- `MIGRATE_FROM_JSON` (opcional, `true` força migracao dos JSON para SQLite)
 
 Notas:
 - `.env.example` e apenas referencia. O bot nao carrega esse arquivo.
 - Em producao, as chaves vem exclusivamente das variaveis do host (Render/Discloud).
+
+## Banco de Dados (SQLite)
+- O bot usa SQLite local por padrao (`./data/suzi.db`).
+- Para alterar o caminho, defina `DATABASE_URL`.
+- Para migrar dados legados em JSON, use `MIGRATE_FROM_JSON=true` na primeira inicializacao.
+- A migracao cria as tabelas automaticamente e registra o total de itens migrados nos logs.
 
 ## Gemini
 Configure no `.env`:

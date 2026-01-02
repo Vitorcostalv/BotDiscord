@@ -58,7 +58,7 @@ export const registerPlayerCommand = {
         return;
       }
 
-      const existing = getPlayerProfile(targetUser.id);
+      const existing = getPlayerProfile(targetUser.id, interaction.guildId ?? null);
       if (existing && !force) {
         const embed = buildRegisterWarningEmbed(targetUser);
         await safeRespond(interaction, { embeds: [embed] });
@@ -72,17 +72,18 @@ export const registerPlayerCommand = {
         targetUser.id,
         { playerName, level },
         interaction.user.id,
+        interaction.guildId ?? null,
       );
       appendProfileHistory(targetUser.id, {
         type: 'register',
         label: `Registro atualizado por <@${interaction.user.id}> para <@${targetUser.id}>`,
-      });
+      }, interaction.guildId ?? null);
 
       const embed = buildRegisterSuccessEmbed(targetUser, profile);
       await safeRespond(interaction, { embeds: [embed] });
 
       if (isSelf) {
-        const xpResult = awardXp(targetUser.id, 10, { reason: 'register' });
+        const xpResult = awardXp(targetUser.id, 10, { reason: 'register' }, interaction.guildId ?? null);
         if (xpResult.leveledUp) {
           await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
         }

@@ -1,6 +1,14 @@
 import { join } from 'path';
 
 import { env } from '../config/env.js';
+import { isDbAvailable } from '../db/index.js';
+import {
+  getSteamCache as getSteamCacheDb,
+  getSteamLink as getSteamLinkDb,
+  removeSteamLink as removeSteamLinkDb,
+  upsertSteamCache as upsertSteamCacheDb,
+  upsertSteamLink as upsertSteamLinkDb,
+} from '../repositories/steamRepo.js';
 import { logWarn } from '../utils/logging.js';
 
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
@@ -71,12 +79,35 @@ export function mapPersonaState(personastate: number): string {
   }
 }
 
-export function getSteamLink(userId: string): SteamLink | null {
+export function getSteamLink(userId: string, guildId?: string | null): SteamLink | null {
+  if (isDbAvailable()) {
+    try {
+      const link = getSteamLinkDb(guildId ?? null, userId);
+      return link
+        ? { steamId64: link.steamId64, linkedAt: link.linkedAt, linkedBy: link.linkedBy }
+        : null;
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   return store.links[userId] ?? null;
 }
 
-export function linkSteam(userId: string, steamId64: string, linkedBy: string): SteamLink {
+export function linkSteam(
+  userId: string,
+  steamId64: string,
+  linkedBy: string,
+  guildId?: string | null,
+): SteamLink {
+  if (isDbAvailable()) {
+    try {
+      const link = upsertSteamLinkDb(guildId ?? null, userId, steamId64, linkedBy);
+      return { steamId64: link.steamId64, linkedAt: link.linkedAt, linkedBy: link.linkedBy };
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   const link: SteamLink = { steamId64, linkedAt: Date.now(), linkedBy };
   store.links[userId] = link;
@@ -84,7 +115,14 @@ export function linkSteam(userId: string, steamId64: string, linkedBy: string): 
   return link;
 }
 
-export function unlinkSteam(userId: string): boolean {
+export function unlinkSteam(userId: string, guildId?: string | null): boolean {
+  if (isDbAvailable()) {
+    try {
+      return removeSteamLinkDb(guildId ?? null, userId);
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readStore();
   if (!store.links[userId]) return false;
   delete store.links[userId];
@@ -162,10 +200,20 @@ async function fetchSteamSummary(steamId64: string): Promise<SteamSummaryResult>
 
 export async function getCachedSummary(
   steamId64: string,
-  options?: { force?: boolean },
+  options?: { force?: boolean; guildId?: string | null },
 ): Promise<SteamSummaryResult> {
-  const store = readStore();
-  const cached = store.cache[steamId64];
+  let cached: SteamSummary | undefined;
+  if (isDbAvailable()) {
+    try {
+      const cachedRow = getSteamCacheDb(steamId64);
+      cached = cachedRow ? (cachedRow.data as SteamSummary) : undefined;
+    } catch {
+      cached = undefined;
+    }
+  } else {
+    const store = readStore();
+    cached = store.cache[steamId64];
+  }
   const now = Date.now();
 
   if (cached && !options?.force && now - cached.fetchedAt < CACHE_TTL_MS) {
@@ -177,7 +225,18 @@ export async function getCachedSummary(
     return result;
   }
 
-  store.cache[steamId64] = result.summary;
-  writeStore(store);
+  if (isDbAvailable()) {
+    try {
+      upsertSteamCacheDb(steamId64, result.summary as unknown as Record<string, unknown>);
+    } catch {
+      const store = readStore();
+      store.cache[steamId64] = result.summary;
+      writeStore(store);
+    }
+  } else {
+    const store = readStore();
+    store.cache[steamId64] = result.summary;
+    writeStore(store);
+  }
   return { ok: true, summary: result.summary, cached: false };
 }

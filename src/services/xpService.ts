@@ -1,5 +1,8 @@
 import { join } from 'path';
 
+import { isDbAvailable } from '../db/index.js';
+import { getXpState, upsertXpState } from '../repositories/xpRepo.js';
+
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
 export type XpStreak = {
@@ -129,14 +132,32 @@ export function getXpProgress(state: XpState): XpProgress {
   return { level: state.level, current, needed, percent };
 }
 
-export function getUserXp(userId: string): XpState {
+export function getUserXp(userId: string, guildId?: string | null): XpState {
+  if (isDbAvailable()) {
+    try {
+      const state = getXpState(guildId ?? null, userId);
+      return {
+        xp: state.xp,
+        level: state.level,
+        lastGain: state.lastGain,
+        streak: { days: state.streakDays, lastDay: state.streakLastDay },
+      };
+    } catch {
+      // fallback to JSON
+    }
+  }
   const store = readJsonFile<XpStore>(XP_PATH, {});
   return getState(store, userId);
 }
 
-export function awardXp(userId: string, amount: number, options: AwardXpOptions): AwardXpResult {
+export function awardXp(
+  userId: string,
+  amount: number,
+  options: AwardXpOptions,
+  guildId?: string | null,
+): AwardXpResult {
   if (amount <= 0) {
-    const current = getUserXp(userId);
+    const current = getUserXp(userId, guildId);
     return { gained: 0, leveledUp: false, newLevel: current.level, state: current };
   }
 
@@ -146,7 +167,7 @@ export function awardXp(userId: string, amount: number, options: AwardXpOptions)
   const expiresAt = cooldowns.get(cooldownKey);
 
   if (expiresAt && now < expiresAt) {
-    const current = getUserXp(userId);
+    const current = getUserXp(userId, guildId);
     return { gained: 0, leveledUp: false, newLevel: current.level, state: current };
   }
 
@@ -154,8 +175,27 @@ export function awardXp(userId: string, amount: number, options: AwardXpOptions)
     cooldowns.set(cooldownKey, now + cooldownSeconds * 1000);
   }
 
-  const store = readJsonFile<XpStore>(XP_PATH, {});
-  const state = getState(store, userId);
+  let state: XpState | null = null;
+  let useDb = false;
+  if (isDbAvailable()) {
+    try {
+      const dbState = getXpState(guildId ?? null, userId);
+      state = {
+        xp: dbState.xp,
+        level: dbState.level,
+        lastGain: dbState.lastGain,
+        streak: { days: dbState.streakDays, lastDay: dbState.streakLastDay },
+      };
+      useDb = true;
+    } catch {
+      state = null;
+      useDb = false;
+    }
+  }
+  if (!state) {
+    const store = readJsonFile<XpStore>(XP_PATH, {});
+    state = getState(store, userId);
+  }
   const updatedXp = state.xp + amount;
   const newLevel = calculateLevelFromXp(updatedXp);
   const leveledUp = newLevel > state.level;
@@ -169,8 +209,19 @@ export function awardXp(userId: string, amount: number, options: AwardXpOptions)
     lastGain: now,
   };
 
-  store[userId] = updated;
-  writeJsonAtomic(XP_PATH, store);
+  if (useDb) {
+    upsertXpState(guildId ?? null, userId, {
+      xp: updated.xp,
+      level: updated.level,
+      lastGain: updated.lastGain,
+      streakDays: updated.streak.days,
+      streakLastDay: updated.streak.lastDay,
+    });
+  } else {
+    const store = readJsonFile<XpStore>(XP_PATH, {});
+    store[userId] = updated;
+    writeJsonAtomic(XP_PATH, store);
+  }
 
   return { gained: amount, leveledUp, newLevel, state: updated };
 }

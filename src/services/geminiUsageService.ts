@@ -1,5 +1,8 @@
 import { join } from 'path';
 
+import { isDbAvailable } from '../db/index.js';
+import { getUsage, upsertUsage } from '../repositories/geminiUsageRepo.js';
+
 import { MIN_GEMINI_API_KEY_LENGTH } from './gemini.js';
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
@@ -130,6 +133,12 @@ export function getTodayKey(): string {
 
 export function bumpGlobal(delta = 1): UsageEntry {
   const dayKey = getTodayKey();
+  if (isDbAvailable()) {
+    const existing = getUsage('global', '') ?? createEntry(dayKey);
+    const updated = normalizeAndBump(existing, dayKey, delta);
+    upsertUsage('global', '', updated);
+    return updated;
+  }
   const store = readStore(dayKey);
   store.global = normalizeAndBump(store.global, dayKey, delta);
   writeJsonAtomic(USAGE_PATH, store);
@@ -138,6 +147,12 @@ export function bumpGlobal(delta = 1): UsageEntry {
 
 export function bumpGuild(guildId: string, delta = 1): UsageEntry {
   const dayKey = getTodayKey();
+  if (isDbAvailable()) {
+    const existing = getUsage('guild', guildId) ?? createEntry(dayKey);
+    const entry = normalizeAndBump(existing, dayKey, delta);
+    upsertUsage('guild', guildId, entry);
+    return entry;
+  }
   const store = readStore(dayKey);
   const entry = normalizeAndBump(store.byGuild[guildId], dayKey, delta);
   store.byGuild[guildId] = entry;
@@ -147,6 +162,12 @@ export function bumpGuild(guildId: string, delta = 1): UsageEntry {
 
 export function bumpUser(userId: string, delta = 1): UsageEntry {
   const dayKey = getTodayKey();
+  if (isDbAvailable()) {
+    const existing = getUsage('user', userId) ?? createEntry(dayKey);
+    const entry = normalizeAndBump(existing, dayKey, delta);
+    upsertUsage('user', userId, entry);
+    return entry;
+  }
   const store = readStore(dayKey);
   const entry = normalizeAndBump(store.byUser[userId], dayKey, delta);
   store.byUser[userId] = entry;
@@ -164,6 +185,18 @@ export function bumpUsage({
   delta?: number;
 }): { global: UsageEntry; guild: UsageEntry | null; user: UsageEntry } {
   const dayKey = getTodayKey();
+  if (isDbAvailable()) {
+    const globalEntry = normalizeAndBump(getUsage('global', '') ?? createEntry(dayKey), dayKey, delta);
+    upsertUsage('global', '', globalEntry);
+    const userEntry = normalizeAndBump(getUsage('user', userId) ?? createEntry(dayKey), dayKey, delta);
+    upsertUsage('user', userId, userEntry);
+    let guildEntry: UsageEntry | null = null;
+    if (guildId) {
+      guildEntry = normalizeAndBump(getUsage('guild', guildId) ?? createEntry(dayKey), dayKey, delta);
+      upsertUsage('guild', guildId, guildEntry);
+    }
+    return { global: globalEntry, guild: guildEntry, user: userEntry };
+  }
   const store = readStore(dayKey);
   store.global = normalizeAndBump(store.global, dayKey, delta);
   const userEntry = normalizeAndBump(store.byUser[userId], dayKey, delta);
@@ -185,6 +218,46 @@ export function getStatus({
   userId?: string | null;
 } = {}): GeminiUsageStatus {
   const dayKey = getTodayKey();
+  if (isDbAvailable()) {
+    const globalResult = normalizeEntry(getUsage('global', '') ?? createEntry(dayKey), dayKey);
+    if (globalResult.changed) {
+      upsertUsage('global', '', globalResult.entry);
+    }
+
+    let guildEntry: UsageEntry | null = null;
+    if (guildId) {
+      const existing = getUsage('guild', guildId) ?? createEntry(dayKey);
+      const result = normalizeEntry(existing, dayKey);
+      guildEntry = result.entry;
+      if (result.changed) {
+        upsertUsage('guild', guildId, result.entry);
+      }
+    }
+
+    let userEntry: UsageEntry | null = null;
+    if (userId) {
+      const existing = getUsage('user', userId) ?? createEntry(dayKey);
+      const result = normalizeEntry(existing, dayKey);
+      userEntry = result.entry;
+      if (result.changed) {
+        upsertUsage('user', userId, result.entry);
+      }
+    }
+
+    const dailyLimit = parseDailyLimit();
+    const remaining = dailyLimit === null ? null : Math.max(0, dailyLimit - globalResult.entry.countToday);
+
+    return {
+      enabled: isGeminiEnabled(),
+      dayKey,
+      dailyLimit,
+      remaining,
+      global: globalResult.entry,
+      guild: guildEntry,
+      user: userEntry,
+    };
+  }
+
   const store = readStore(dayKey);
   let changed = false;
 
