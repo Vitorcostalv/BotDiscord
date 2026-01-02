@@ -12,12 +12,10 @@ import { registerCommands } from './discord/commands/register.js';
 import { registerPlayerCommand } from './discord/commands/registerPlayer.js';
 import { reviewCommand } from './discord/commands/review.js';
 import { rollCommand } from './discord/commands/roll.js';
-import { settitleCommand } from './discord/commands/settitle.js';
 import { sobreCommand } from './discord/commands/sobre.js';
 import { statusCommand } from './discord/commands/status.js';
 import { steamCommand } from './discord/commands/steam.js';
 import { titleCommand } from './discord/commands/title.js';
-import { titleclearCommand } from './discord/commands/titleclear.js';
 import { safeReply } from './utils/interactions.js';
 import { logError, logInfo } from './utils/logging.js';
 
@@ -45,9 +43,7 @@ const commandMap = {
   conquistas: conquistasCommand,
   nivel: nivelCommand,
   review: reviewCommand,
-  settitle: settitleCommand,
   title: titleCommand,
-  titleclear: titleclearCommand,
   sobre: sobreCommand,
 };
 

@@ -10,8 +10,7 @@
   SlashCommandBuilder,
 } from 'discord.js';
 
-import type { AchievementDefinition } from '../../achievements/definitions.js';
-import { listAllAchievements, trackEvent, getUserAchievements } from '../../achievements/service.js';
+import { trackEvent } from '../../achievements/service.js';
 import { env } from '../../config/env.js';
 import { renderProfileCard } from '../../render/profileCard.js';
 import {
@@ -19,8 +18,6 @@ import {
   getPlayerProfile,
   setProfileBanner,
 } from '../../services/profileService.js';
-import { getUserReviewCount, listUserReviews, type ReviewCategory } from '../../services/reviewService.js';
-import { getUserRolls } from '../../services/rollHistoryService.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
 import { getUserXp, getXpProgress } from '../../services/xpService.js';
 import { toPublicMessage } from '../../utils/errors.js';
@@ -28,23 +25,16 @@ import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
 import { logError, logWarn } from '../../utils/logging.js';
 import { buildAchievementUnlockEmbed, buildMissingProfileEmbed, createSuziEmbed } from '../embeds.js';
 
-const EMOJI_HEART = '\u{1F496}';
-const EMOJI_GAME = '\u{1F3AE}';
-const EMOJI_SKULL = '\u{1F480}';
-const EMOJI_SCROLL = '\u{1F4DC}';
-const EMOJI_TROPHY = '\u{1F3C6}';
-
-const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
-  AMEI: EMOJI_HEART,
-  JOGAVEL: EMOJI_GAME,
-  RUIM: EMOJI_SKULL,
-};
-
 type ProfilePage = 'profile' | 'achievements' | 'history' | 'reviews';
 type BannerAction = 'set' | 'clear';
 
 const BANNER_ALLOWED_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-const PROGRESS_BAR_SIZE = 10;
+const PAGE_LABELS: Record<ProfilePage, { label: string; index: number }> = {
+  profile: { label: 'Perfil', index: 1 },
+  achievements: { label: 'Conquistas', index: 2 },
+  history: { label: 'Historico', index: 3 },
+  reviews: { label: 'Reviews', index: 4 },
+};
 
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
@@ -52,16 +42,6 @@ function safeText(text: string, maxLen: number): string {
   if (normalized.length <= maxLen) return normalized;
   const sliceEnd = Math.max(0, maxLen - 3);
   return `${normalized.slice(0, sliceEnd).trimEnd()}...`;
-}
-
-function formatStars(value: number): string {
-  const clamped = Math.max(0, Math.min(5, Math.round(value)));
-  return `${'★'.repeat(clamped)}${'☆'.repeat(5 - clamped)}`;
-}
-
-function buildProgressBar(percent: number): string {
-  const filled = Math.min(PROGRESS_BAR_SIZE, Math.max(0, Math.round((percent / 100) * PROGRESS_BAR_SIZE)));
-  return `${'█'.repeat(filled)}${'░'.repeat(PROGRESS_BAR_SIZE - filled)}`;
 }
 
 function resolveBanner(profileBanner?: string | null): string | null {
@@ -135,56 +115,6 @@ function resolvePage(customId: string): ProfilePage | null {
   if (customId === 'perfil:history') return 'history';
   if (customId === 'perfil:reviews') return 'reviews';
   return null;
-}
-
-function formatFavorites(
-  items: Array<{ name: string; stars: number; category: ReviewCategory }>,
-  canShow: boolean,
-): string {
-  if (!canShow) {
-    return 'Use /perfil em um servidor para ver favoritos.';
-  }
-  if (!items.length) {
-    return 'Sem favoritos ainda.';
-  }
-  return items
-    .map((entry) => `- ${safeText(entry.name, 40)} ${formatStars(entry.stars)} ${CATEGORY_EMOJI[entry.category]} ${entry.category}`)
-    .join('\n');
-}
-
-function formatAchievements(total: number, unlocked: AchievementDefinition[]): string {
-  if (!unlocked.length) {
-    return 'Nenhuma conquista desbloqueada ainda.';
-  }
-  const lines = unlocked.map((item) => `${item.emoji} ${item.name}`);
-  return safeText(lines.join('\n'), 1024);
-}
-
-function formatRollHistory(rolls: Array<{ ts: number; expr: string; total: number; min: number; max: number }>): string {
-  if (!rolls.length) {
-    return 'Sem rolagens registradas ainda.';
-  }
-  return rolls
-    .map((entry) => {
-      const time = `<t:${Math.floor(entry.ts / 1000)}:R>`;
-      return `• ${time} — \`${entry.expr}\` → total ${entry.total} (min ${entry.min}, max ${entry.max})`;
-    })
-    .join('\n');
-}
-
-function formatReviewList(
-  items: Array<{ name: string; stars: number; category: ReviewCategory }>,
-  canShow: boolean,
-): string {
-  if (!canShow) {
-    return 'Use /perfil em um servidor para ver suas reviews.';
-  }
-  if (!items.length) {
-    return 'Sem reviews ainda. Use /review add';
-  }
-  return items
-    .map((entry, index) => `${index + 1}) ${safeText(entry.name, 40)} — ${formatStars(entry.stars)} (${entry.category})`)
-    .join('\n');
 }
 
 export const perfilCommand = {
@@ -282,37 +212,8 @@ export const perfilCommand = {
           return;
         }
       }
-
-      const achievementsState = getUserAchievements(target.id);
-      const definitions = listAllAchievements();
-      const unlockedMap = new Map(achievementsState.unlockedList.map((entry) => [entry.id, entry.unlockedAt]));
-      const unlocked = definitions.filter((definition) => unlockedMap.has(definition.id));
-
       const xpState = getUserXp(target.id);
       const progress = getXpProgress(xpState);
-
-      const guildId = interaction.guildId;
-      const canShowReviews = Boolean(guildId);
-      const favorites = canShowReviews
-        ? listUserReviews(guildId ?? '', target.id, { favoritesOnly: true, order: 'stars', limit: 3 })
-        : [];
-      const topReviews = canShowReviews
-        ? listUserReviews(guildId ?? '', target.id, { order: 'stars', limit: 5 })
-        : [];
-      const totalReviews = canShowReviews ? getUserReviewCount(guildId ?? '', target.id) : 0;
-
-      const favoriteEntries = favorites.map((entry) => ({
-        name: entry.name,
-        stars: entry.review.stars,
-        category: entry.review.category,
-      }));
-      const reviewEntries = topReviews.map((entry) => ({
-        name: entry.name,
-        stars: entry.review.stars,
-        category: entry.review.category,
-      }));
-
-      const rolls = getUserRolls(target.id, 5);
       const displayName = target.globalName ?? target.username;
       const banner = resolveBanner(profile.bannerUrl);
       const avatarUrl = target.displayAvatarURL({ size: 256, extension: 'png' });
@@ -327,32 +228,22 @@ export const perfilCommand = {
           xpCurrent: progress.current,
           xpNeeded: progress.needed,
           xpPercent: progress.percent,
-          favorites: favoriteEntries,
+          favorites: [],
         });
       } catch (error) {
         logWarn('SUZI-CMD-002', error, { message: 'Falha ao renderizar card do perfil', userId: target.id });
       }
-
       const profileCardAttachment = profileCardBuffer
         ? new AttachmentBuilder(profileCardBuffer, { name: 'profile.png' })
         : null;
-      const buildProfileEmbed = (useCardImage: boolean) => {
-        const embed = createSuziEmbed('primary')
-          .setTitle(displayName)
-          .setThumbnail(target.displayAvatarURL({ size: 128 }))
-          .addFields(
-            {
-              name: '✨ Progresso com a Suzi',
-              value: `Nivel ${progress.level}\nXP ${progress.current}/${progress.needed} (${progress.percent}%)\n${buildProgressBar(progress.percent)}`,
-            },
-            {
-              name: '⭐ Favoritos',
-              value: formatFavorites(favoriteEntries, canShowReviews),
-            },
-          )
-          .setFooter({ text: 'Pagina 1/4 · Perfil' });
 
-        if (useCardImage && profileCardAttachment) {
+      const buildPageEmbed = (page: ProfilePage) => {
+        const { label, index } = PAGE_LABELS[page];
+        const embed = createSuziEmbed('primary')
+          .setTitle(`${label} - ${safeText(displayName, 64)}`)
+          .setFooter({ text: `Pagina ${index}/4 - ${label}` });
+
+        if (profileCardAttachment) {
           embed.setImage('attachment://profile.png');
         } else if (banner) {
           embed.setImage(banner);
@@ -361,69 +252,16 @@ export const perfilCommand = {
         return embed;
       };
 
-      const buildAchievementsEmbed = () => {
-        const embed = createSuziEmbed('accent')
-          .setTitle('🏆 Conquistas')
-          .setThumbnail(target.displayAvatarURL({ size: 128 }))
-          .addFields({ name: 'Total de conquistas', value: String(unlocked.length), inline: true })
-          .addFields({
-            name: `${EMOJI_TROPHY} Desbloqueadas`,
-            value: formatAchievements(unlocked.length, unlocked),
-          })
-          .setFooter({ text: 'Pagina 2/4 · Conquistas' });
-
-        if (banner) {
-          embed.setImage(banner);
-        }
-
-        return embed;
-      };
-
-      const buildHistoryEmbed = () => {
-        const embed = createSuziEmbed('dark')
-          .setTitle('📜 Historico')
-          .setThumbnail(target.displayAvatarURL({ size: 128 }))
-          .addFields({ name: `${EMOJI_SCROLL} Ultimas rolagens`, value: formatRollHistory(rolls) })
-          .setFooter({ text: 'Pagina 3/4 · Historico' });
-
-        if (banner) {
-          embed.setImage(banner);
-        }
-
-        return embed;
-      };
-
-      const buildReviewsEmbed = () => {
-        const embed = createSuziEmbed('primary')
-          .setTitle('⭐ Reviews')
-          .setThumbnail(target.displayAvatarURL({ size: 128 }))
-          .setDescription(canShowReviews ? `Total de reviews: ${totalReviews}` : 'Sem reviews para mostrar aqui.')
-          .addFields({ name: 'Top 5 jogos', value: formatReviewList(reviewEntries, canShowReviews) })
-          .setFooter({ text: 'Pagina 4/4 · Reviews' });
-
-        if (banner) {
-          embed.setImage(banner);
-        }
-
-        return embed;
-      };
       const pageBuilders: Record<ProfilePage, () => ReturnType<typeof createSuziEmbed>> = {
-        profile: () => buildProfileEmbed(Boolean(profileCardAttachment)),
-        achievements: buildAchievementsEmbed,
-        history: buildHistoryEmbed,
-        reviews: buildReviewsEmbed,
+        profile: () => buildPageEmbed('profile'),
+        achievements: () => buildPageEmbed('achievements'),
+        history: () => buildPageEmbed('history'),
+        reviews: () => buildPageEmbed('reviews'),
       };
 
       const buildPagePayload = (page: ProfilePage) => {
         const nextEmbed = pageBuilders[page]();
-        const payload = { embeds: [nextEmbed], components: [buildProfileButtons(page)] };
-        if (page === 'profile' && profileCardAttachment) {
-          return { ...payload, files: [profileCardAttachment] };
-        }
-        if (profileCardAttachment) {
-          return { ...payload, attachments: [] };
-        }
-        return payload;
+        return { embeds: [nextEmbed], components: [buildProfileButtons(page)] };
       };
 
       let currentPage: ProfilePage = 'profile';

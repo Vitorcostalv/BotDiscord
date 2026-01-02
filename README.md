@@ -4,13 +4,13 @@
 - `/ping` - Latencia rapida.
 - `/jogo nome:<texto> plataforma:<opcional>` - Ajuda estruturada para um jogo.
 - `/pergunta pergunta:<texto>` - Perguntas sobre jogos com memoria curta.
-- `/review add|remove|view|my|top|favorite` - Avaliacoes de jogos com ranking e favoritos.
+- `/review acao:<add|remove|view|my|top|favorite>` - Avaliacoes de jogos com ranking e favoritos.
 - `/register nome_jogador:<texto> nivel:<opcional>` - Registra o perfil do jogador.
 - `/perfil user:<opcional>` - Mostra o perfil do player com paginas.
 - `/roll expressao:<NdM>` - Rolagem de dados (ex: `2d20`).
 - `/nivel nivel:<1..99> user:<opcional>` - Atualiza o nivel do usuario.
-- `/title add|remove` - Gerencia titulos desbloqueados (aliases: `/settitle`, `/titleclear`).
-- `/steam link|view|refresh|unlink` - Vincula e consulta perfil Steam.
+- `/title acao:<add|remove>` - Gerencia titulos desbloqueados.
+- `/steam acao:<link|view|refresh|unlink>` - Vincula e consulta perfil Steam.
 - `/sobre` - Lore da Suzi.
 - `/conquistas` - Lista conquistas do player.
 - `/ajuda` - Mostra a lista de comandos.
@@ -44,28 +44,28 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 
 ## Steam
 - Configure `STEAM_API_KEY` no ambiente.
-- Comandos: `/steam link`, `/steam view`, `/steam refresh`, `/steam unlink`.
+- Use `/steam acao:<link|view|refresh|unlink>`.
 - Observacao: jogo atual so aparece se o perfil e detalhes estiverem publicos na Steam.
 
 ## Avaliacoes de Jogos
 - As avaliacoes ficam em `data/reviews.json` (por servidor/guild).
 - Nota de 1 a 5 estrelas, categoria AMEI/JOGAVEL/RUIM e opiniao curta (max 400).
 - Tags opcionais (max 5). Favoritos aparecem no `/perfil`.
-- Ranking do `/review top`: soma de estrelas (total), desempate por numero de avaliacoes, media e nome.
+- Ranking do `/review acao:top`: soma de estrelas (total), desempate por numero de avaliacoes, media e nome.
 
 ### Comandos /review
-- `/review add nome:<texto> estrelas:<1..5> categoria:<AMEI|JOGAVEL|RUIM> opiniao:<texto> plataforma:<opcional> tags:<CSV> favorito:<opcional>`
-- `/review remove nome:<texto>`
-- `/review view nome:<texto>`
-- `/review my categoria:<opcional> ordenar:<stars|recent>`
-- `/review top categoria:<opcional> min_avaliacoes:<opcional> limite:<opcional>` (padrao: ranking geral, min 1, limite 10)
-- `/review favorite nome:<texto>`
+- `/review acao:add nome:<texto> estrelas:<1..5> categoria:<AMEI|JOGAVEL|RUIM> opiniao:<texto> plataforma:<opcional> tags:<CSV> favorito:<opcional>`
+- `/review acao:remove nome:<texto>`
+- `/review acao:view nome:<texto>`
+- `/review acao:my categoria:<opcional> ordenar:<stars|recent>`
+- `/review acao:top categoria:<opcional> min_avaliacoes:<opcional> limite:<opcional>` (padrao: ranking geral, min 1, limite 10)
+- `/review acao:favorite nome:<texto>`
 
 ### Exemplos
-- `/review add nome:"Baldur's Gate 3" estrelas:5 categoria:AMEI opiniao:"Insano." tags:"historia, combate" favorito:true`
-- `/review view nome:"Baldur's Gate 3"`
-- `/review top categoria:AMEI limite:10`
-- `/review favorite nome:"Baldur's Gate 3"`
+- `/review acao:add nome:"Baldur's Gate 3" estrelas:5 categoria:AMEI opiniao:"Insano." tags:"historia, combate" favorito:true`
+- `/review acao:view nome:"Baldur's Gate 3"`
+- `/review acao:top categoria:AMEI limite:10`
+- `/review acao:favorite nome:"Baldur's Gate 3"`
 
 ## Perfil com paginas
 - O `/perfil` abre um painel com botoes: Perfil, Conquistas, Historico, Reviews e Fechar.

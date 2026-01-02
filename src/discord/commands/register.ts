@@ -13,12 +13,10 @@ import { pingCommand } from './ping.js';
 import { registerPlayerCommand } from './registerPlayer.js';
 import { reviewCommand } from './review.js';
 import { rollCommand } from './roll.js';
-import { settitleCommand } from './settitle.js';
 import { sobreCommand } from './sobre.js';
 import { statusCommand } from './status.js';
 import { steamCommand } from './steam.js';
 import { titleCommand } from './title.js';
-import { titleclearCommand } from './titleclear.js';
 
 const commands = [
   pingCommand.data,
@@ -34,9 +32,7 @@ const commands = [
   conquistasCommand.data,
   nivelCommand.data,
   reviewCommand.data,
-  settitleCommand.data,
   titleCommand.data,
-  titleclearCommand.data,
   sobreCommand.data,
 ];
 

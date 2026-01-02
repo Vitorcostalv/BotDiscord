@@ -161,7 +161,10 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
       },
       {
         name: 'Integracoes',
-        value: safeText('/steam link|view|refresh|unlink\n- Vincula e consulta perfil Steam', 1024),
+        value: safeText(
+          '/steam acao:<link|view|refresh|unlink>\n- Vincula e consulta perfil Steam',
+          1024,
+        ),
       },
       {
         name: `${EMOJI.game} Jogos & Perguntas`,
@@ -174,7 +177,7 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
       {
         name: `${EMOJI.level} Avaliacoes`,
         value: safeText(
-          '/review add|remove|view|my|top|favorite\n- Avaliacoes de jogos com ranking e favoritos',
+          '/review acao:<add|remove|view|my|top|favorite>\n- Avaliacoes de jogos com ranking e favoritos',
           1024,
         ),
       },
@@ -198,9 +201,7 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
             '/perfil banner set url:<texto>\n- Define o banner do perfil\n' +
             '/perfil banner clear\n- Remove o banner custom\n' +
             '/nivel nivel:<1..99> user:<opcional>\n- Atualiza o nivel do usuario\n' +
-            '/title add titulo:<texto>\n- Equipa um titulo desbloqueado\n' +
-            '/title remove\n- Remove o titulo equipado\n' +
-            '(aliases: /settitle, /titleclear)\n' +
+            '/title acao:<add|remove> titulo:<texto>\n- Gerencia titulo equipado\n' +
             '/conquistas\n- Lista suas conquistas',
           1024,
         ),

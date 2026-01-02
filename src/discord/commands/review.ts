@@ -35,7 +35,16 @@ const CATEGORY_CHOICES = [
   { name: `RUIM ${EMOJI_SKULL}`, value: 'RUIM' },
 ];
 
-type ReviewSubcommand = 'add' | 'remove' | 'view' | 'my' | 'top' | 'favorite';
+type ReviewAction = 'add' | 'remove' | 'view' | 'my' | 'top' | 'favorite';
+
+const ACTION_CHOICES = [
+  { name: 'add', value: 'add' },
+  { name: 'remove', value: 'remove' },
+  { name: 'view', value: 'view' },
+  { name: 'my', value: 'my' },
+  { name: 'top', value: 'top' },
+  { name: 'favorite', value: 'favorite' },
+];
 
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
@@ -86,104 +95,60 @@ export const reviewCommand = {
   data: new SlashCommandBuilder()
     .setName('review')
     .setDescription('Gerencie avaliacoes de jogos')
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('add')
-        .setDescription('Adiciona ou atualiza uma avaliacao')
-        .addStringOption((option) => option.setName('nome').setDescription('Nome do jogo').setRequired(true))
-        .addIntegerOption((option) =>
-          option.setName('estrelas').setDescription('Nota (1 a 5)').setRequired(true).setMinValue(1).setMaxValue(5),
-        )
-        .addStringOption((option) =>
-          option
-            .setName('categoria')
-            .setDescription('Categoria da avaliacao')
-            .setRequired(true)
-            .addChoices(...CATEGORY_CHOICES),
-        )
-        .addStringOption((option) =>
-          option
-            .setName('opiniao')
-            .setDescription('Sua opiniao (max 400)')
-            .setRequired(true)
-            .setMaxLength(400),
-        )
-        .addStringOption((option) =>
-          option.setName('plataforma').setDescription('Plataforma (ex: PC, PS5)').setRequired(false),
-        )
-        .addStringOption((option) =>
-          option.setName('tags').setDescription('Tags (CSV: historia, combate)').setRequired(false),
-        )
-        .addBooleanOption((option) =>
-          option.setName('favorito').setDescription('Marca como favorito').setRequired(false),
+    .addStringOption((option) =>
+      option
+        .setName('acao')
+        .setDescription('O que deseja fazer')
+        .setRequired(true)
+        .addChoices(...ACTION_CHOICES),
+    )
+    .addStringOption((option) => option.setName('nome').setDescription('Nome do jogo').setRequired(false))
+    .addIntegerOption((option) =>
+      option.setName('estrelas').setDescription('Nota (1 a 5)').setRequired(false).setMinValue(1).setMaxValue(5),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('categoria')
+        .setDescription('Categoria da avaliacao')
+        .setRequired(false)
+        .addChoices(...CATEGORY_CHOICES),
+    )
+    .addStringOption((option) =>
+      option.setName('opiniao').setDescription('Sua opiniao (max 400)').setRequired(false).setMaxLength(400),
+    )
+    .addStringOption((option) =>
+      option.setName('plataforma').setDescription('Plataforma (ex: PC, PS5)').setRequired(false),
+    )
+    .addStringOption((option) =>
+      option.setName('tags').setDescription('Tags (CSV: historia, combate)').setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option.setName('favorito').setDescription('Marca como favorito').setRequired(false),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('ordenar')
+        .setDescription('Ordenar por')
+        .setRequired(false)
+        .addChoices(
+          { name: 'stars', value: 'stars' },
+          { name: 'recent', value: 'recent' },
         ),
     )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('remove')
-        .setDescription('Remove sua avaliacao')
-        .addStringOption((option) => option.setName('nome').setDescription('Nome do jogo').setRequired(true)),
+    .addIntegerOption((option) =>
+      option
+        .setName('min_avaliacoes')
+        .setDescription('Minimo de avaliacoes')
+        .setRequired(false)
+        .setMinValue(1),
     )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('view')
-        .setDescription('Mostra detalhes da avaliacao no servidor')
-        .addStringOption((option) => option.setName('nome').setDescription('Nome do jogo').setRequired(true)),
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('my')
-        .setDescription('Lista suas avaliacoes')
-        .addStringOption((option) =>
-          option
-            .setName('categoria')
-            .setDescription('Filtrar por categoria')
-            .setRequired(false)
-            .addChoices(...CATEGORY_CHOICES),
-        )
-        .addStringOption((option) =>
-          option
-            .setName('ordenar')
-            .setDescription('Ordenar por')
-            .setRequired(false)
-            .addChoices(
-              { name: 'stars', value: 'stars' },
-              { name: 'recent', value: 'recent' },
-            ),
-        ),
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('top')
-        .setDescription('Ranking do servidor')
-        .addStringOption((option) =>
-          option
-            .setName('categoria')
-            .setDescription('Filtrar por categoria')
-            .setRequired(false)
-            .addChoices(...CATEGORY_CHOICES),
-        )
-        .addIntegerOption((option) =>
-          option
-            .setName('min_avaliacoes')
-            .setDescription('Minimo de avaliacoes')
-            .setRequired(false)
-            .setMinValue(1),
-        )
-        .addIntegerOption((option) =>
-          option
-            .setName('limite')
-            .setDescription('Quantidade no ranking (max 25)')
-            .setRequired(false)
-            .setMinValue(1)
-            .setMaxValue(25),
-        ),
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('favorite')
-        .setDescription('Marca ou remove favorito')
-        .addStringOption((option) => option.setName('nome').setDescription('Nome do jogo').setRequired(true)),
+    .addIntegerOption((option) =>
+      option
+        .setName('limite')
+        .setDescription('Quantidade no ranking (max 25)')
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(25),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
@@ -196,11 +161,16 @@ export const reviewCommand = {
       return;
     }
 
-    const subcommand = interaction.options.getSubcommand() as ReviewSubcommand;
+    const action = interaction.options.getString('acao', true) as ReviewAction;
 
     try {
-      if (subcommand === 'add') {
-        const name = interaction.options.getString('nome', true).trim();
+      if (action === 'add') {
+        const name = interaction.options.getString('nome')?.trim();
+        if (!name) {
+          const embed = buildEmptyEmbed('Informe o jogo', 'Use /review acao:add nome:<texto>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
         const gameKey = normalizeGameKey(name);
         if (!gameKey) {
           const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o jogo.');
@@ -208,9 +178,24 @@ export const reviewCommand = {
           return;
         }
 
-        const stars = interaction.options.getInteger('estrelas', true);
-        const category = interaction.options.getString('categoria', true) as ReviewCategory;
-        const opinion = interaction.options.getString('opiniao', true).trim();
+        const stars = interaction.options.getInteger('estrelas');
+        if (!stars) {
+          const embed = buildEmptyEmbed('Informe as estrelas', 'Use /review acao:add estrelas:<1..5>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+        const category = interaction.options.getString('categoria') as ReviewCategory | null;
+        if (!category) {
+          const embed = buildEmptyEmbed('Informe a categoria', 'Use /review acao:add categoria:<AMEI|JOGAVEL|RUIM>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
+        const opinion = interaction.options.getString('opiniao')?.trim();
+        if (!opinion) {
+          const embed = buildEmptyEmbed('Informe a opiniao', 'Use /review acao:add opiniao:<texto>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
         const platform = interaction.options.getString('plataforma');
         const tagsInput = interaction.options.getString('tags');
         const favoriteInput = interaction.options.getBoolean('favorito');
@@ -276,8 +261,13 @@ export const reviewCommand = {
         return;
       }
 
-      if (subcommand === 'remove') {
-        const name = interaction.options.getString('nome', true).trim();
+      if (action === 'remove') {
+        const name = interaction.options.getString('nome')?.trim();
+        if (!name) {
+          const embed = buildEmptyEmbed('Informe o jogo', 'Use /review acao:remove nome:<texto>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
         const gameKey = normalizeGameKey(name);
         if (!gameKey) {
           const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o jogo.');
@@ -300,8 +290,13 @@ export const reviewCommand = {
         return;
       }
 
-      if (subcommand === 'view') {
-        const name = interaction.options.getString('nome', true).trim();
+      if (action === 'view') {
+        const name = interaction.options.getString('nome')?.trim();
+        if (!name) {
+          const embed = buildEmptyEmbed('Informe o jogo', 'Use /review acao:view nome:<texto>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
         const gameKey = normalizeGameKey(name);
         if (!gameKey) {
           const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o jogo.');
@@ -361,7 +356,7 @@ export const reviewCommand = {
         return;
       }
 
-      if (subcommand === 'my') {
+      if (action === 'my') {
         const category = interaction.options.getString('categoria') as ReviewCategory | null;
         const order = interaction.options.getString('ordenar') as 'stars' | 'recent' | null;
 
@@ -394,7 +389,7 @@ export const reviewCommand = {
         return;
       }
 
-      if (subcommand === 'top') {
+      if (action === 'top') {
         const category = interaction.options.getString('categoria') as ReviewCategory | null;
         const minReviews = interaction.options.getInteger('min_avaliacoes') ?? 1;
         const limit = Math.min(interaction.options.getInteger('limite') ?? 10, 25);
@@ -409,7 +404,7 @@ export const reviewCommand = {
         if (summary.totalReviews === 0) {
           const embed = buildEmptyEmbed(
             'Sem avaliacoes ainda',
-            'Ainda nao existem avaliacoes neste servidor. Use /review add',
+            'Ainda nao existem avaliacoes neste servidor. Use /review acao:add',
           );
           await safeRespond(interaction, { embeds: [embed] });
           return;
@@ -422,7 +417,10 @@ export const reviewCommand = {
         });
 
         if (!list.length) {
-          const embed = buildEmptyEmbed('Sem ranking', 'Nenhum jogo atende aos filtros. Tente /review top sem filtros.');
+          const embed = buildEmptyEmbed(
+            'Sem ranking',
+            'Nenhum jogo atende aos filtros. Tente /review acao:top sem filtros.',
+          );
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -445,8 +443,13 @@ export const reviewCommand = {
         return;
       }
 
-      if (subcommand === 'favorite') {
-        const name = interaction.options.getString('nome', true).trim();
+      if (action === 'favorite') {
+        const name = interaction.options.getString('nome')?.trim();
+        if (!name) {
+          const embed = buildEmptyEmbed('Informe o jogo', 'Use /review acao:favorite nome:<texto>.');
+          await safeRespond(interaction, { embeds: [embed] });
+          return;
+        }
         const gameKey = normalizeGameKey(name);
         if (!gameKey) {
           const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o jogo.');
@@ -473,7 +476,7 @@ export const reviewCommand = {
         await safeRespond(interaction, { embeds: [embed] });
       }
     } catch (error) {
-      logError('SUZI-CMD-002', error, { message: 'Erro no comando /review', subcommand });
+      logError('SUZI-CMD-002', error, { message: 'Erro no comando /review', action });
       await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
     }
   },

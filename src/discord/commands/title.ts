@@ -22,6 +22,13 @@ const TITLE_CHOICES = listTitleDefinitions().map((title) => ({
   value: title.id,
 }));
 
+type TitleAction = 'add' | 'remove';
+
+const ACTION_CHOICES = [
+  { name: 'add', value: 'add' },
+  { name: 'remove', value: 'remove' },
+];
+
 export async function executeTitleAdd(interaction: ChatInputCommandInteraction): Promise<void> {
   const profile = getPlayerProfile(interaction.user.id);
   if (!profile) {
@@ -29,7 +36,11 @@ export async function executeTitleAdd(interaction: ChatInputCommandInteraction):
     return;
   }
 
-  const input = interaction.options.getString('title', true);
+  const input = interaction.options.getString('titulo') ?? interaction.options.getString('title');
+  if (!input) {
+    await safeRespond(interaction, `${EMOJI_WARNING} Informe o titulo. Use /title acao:add titulo:<texto>.`);
+    return;
+  }
   const definition = resolveTitleDefinition(input);
   if (!definition) {
     await safeRespond(
@@ -59,7 +70,7 @@ export async function executeTitleAdd(interaction: ChatInputCommandInteraction):
   const embed = createSuziEmbed('success')
     .setTitle(`${EMOJI_TAG} Titulo equipado`)
     .setDescription(`${equipped.label} agora esta ativo no seu perfil.`)
-    .addFields({ name: 'Remover titulo', value: '/title remove' });
+    .addFields({ name: 'Remover titulo', value: '/title acao:remove' });
 
   await safeRespond(interaction, { embeds: [embed] });
 }
@@ -84,31 +95,30 @@ export const titleCommand = {
   data: new SlashCommandBuilder()
     .setName('title')
     .setDescription('Gerencie seus titulos')
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName('add')
-        .setDescription('Equipa um titulo desbloqueado')
-        .addStringOption((option) =>
-          option
-            .setName('title')
-            .setDescription('Titulo para equipar')
-            .setRequired(true)
-            .addChoices(...TITLE_CHOICES),
-        ),
+    .addStringOption((option) =>
+      option
+        .setName('acao')
+        .setDescription('O que deseja fazer')
+        .setRequired(true)
+        .addChoices(...ACTION_CHOICES),
     )
-    .addSubcommand((subcommand) =>
-      subcommand.setName('remove').setDescription('Remove o titulo equipado'),
+    .addStringOption((option) =>
+      option
+        .setName('titulo')
+        .setDescription('Titulo para equipar')
+        .setRequired(false)
+        .addChoices(...TITLE_CHOICES),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) return;
 
-    const subcommand = interaction.options.getSubcommand();
-    if (subcommand === 'add') {
+    const action = interaction.options.getString('acao', true) as TitleAction;
+    if (action === 'add') {
       await executeTitleAdd(interaction);
       return;
     }
-    if (subcommand === 'remove') {
+    if (action === 'remove') {
       await executeTitleRemove(interaction);
     }
   },
