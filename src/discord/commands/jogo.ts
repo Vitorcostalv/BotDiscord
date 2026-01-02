@@ -1,8 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { trackEvent } from '../../achievements/service.js';
-import { generateGeminiAnswerWithMeta, type GeminiAnswerResult } from '../../services/gemini.js';
-import { bumpUsage } from '../../services/geminiUsageService.js';
+import { ask } from '../../llm/router.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro, getPlayerProfile } from '../../services/profileService.js';
 import { getPreferences } from '../../services/storage.js';
@@ -16,11 +15,6 @@ import { buildAchievementUnlockEmbed } from '../embeds.js';
 
 const EMOJI_GAME = '\u{1F3AE}';
 const EMOJI_SPARKLE = '\u2728';
-
-function shouldCountUsage(result: GeminiAnswerResult): boolean {
-  const countFailedRequests = process.env.COUNT_FAILED_REQUESTS !== 'false';
-  return result.usedGemini && (result.status === 'ok' || countFailedRequests);
-}
 
 function withLeadingEmoji(text: string, emoji: string): string {
   if (!text) return `${emoji}`;
@@ -57,16 +51,16 @@ export const jogoCommand = {
       ].join(' ');
 
       try {
-        const geminiResult = await generateGeminiAnswerWithMeta({
+        const result = await ask({
           question,
+          questionType: 'JOGO',
           userProfile,
           userDisplayName: interaction.user.globalName ?? interaction.user.username,
+          guildId: interaction.guildId,
+          userId,
+          intentOverride: 'tutorial',
         });
-        const response = geminiResult.text;
-
-        if (shouldCountUsage(geminiResult)) {
-          bumpUsage({ userId, guildId: interaction.guildId });
-        }
+        const response = result.text;
         appendProfileHistory(userId, {
           type: 'jogo',
           label: platform ? `${gameName} (${platform})` : gameName,

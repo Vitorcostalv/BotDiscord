@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { env } from '../../config/env.js';
+import { getRouterStatus } from '../../llm/router.js';
 import { getStatus } from '../../services/geminiUsageService.js';
 import { getGuildStats } from '../../services/rollHistoryService.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
@@ -28,7 +29,9 @@ export const statusCommand = {
     }
 
     const status = getStatus({ guildId: interaction.guildId, userId: interaction.user.id });
-    const embed = createSuziEmbed(status.enabled ? 'primary' : 'warning').setTitle('Status');
+    const routerStatus = getRouterStatus();
+    const hasGroq = Boolean(env.groqApiKey);
+    const embed = createSuziEmbed(status.enabled || hasGroq ? 'primary' : 'warning').setTitle('Status');
 
     if (!status.enabled) {
       embed.setDescription('Gemini desabilitado.');
@@ -38,12 +41,22 @@ export const statusCommand = {
     const userCount = status.user ? status.user.countToday : null;
 
     embed.addFields(
+      { name: 'LLM Primary', value: routerStatus.primary.toUpperCase(), inline: true },
+      {
+        name: 'Cooldowns',
+        value: `Gemini: ${Math.ceil(routerStatus.cooldowns.geminiMs / 1000)}s\nGroq: ${Math.ceil(routerStatus.cooldowns.groqMs / 1000)}s`,
+        inline: true,
+      },
+      { name: 'Cache (hits/miss)', value: `${routerStatus.cacheHits}/${routerStatus.cacheMisses}`, inline: true },
       { name: 'Gemini hoje', value: String(status.global.countToday), inline: true },
+      { name: 'Groq hoje', value: String(routerStatus.providerCounts.groq), inline: true },
       { name: 'Gemini total', value: String(status.global.countTotal), inline: true },
       { name: 'Restantes hoje', value: formatValue(status.remaining), inline: true },
       { name: 'Uso no servidor', value: formatValue(guildCount), inline: true },
       { name: 'Uso do usuario', value: formatValue(userCount), inline: true },
-      { name: 'Modelo atual', value: env.geminiModel || 'n/d', inline: true },
+      { name: 'Modelo Gemini', value: routerStatus.models.gemini || 'n/d', inline: true },
+      { name: 'Groq fast', value: routerStatus.models.groqFast || 'n/d', inline: true },
+      { name: 'Groq smart', value: routerStatus.models.groqSmart || 'n/d', inline: true },
     );
 
     if (!interaction.guildId) {

@@ -19,8 +19,17 @@
 ## Variaveis de Ambiente
 - `DISCORD_TOKEN` (obrigatorio)
 - `DISCORD_APP_ID` (obrigatorio)
-- `GEMINI_API_KEY` (obrigatorio para /pergunta e /jogo)
+- `GEMINI_API_KEY` (opcional, habilita Gemini para /pergunta e /jogo)
 - `GEMINI_MODEL` (opcional, padrao: `gemini-2.5-flash`)
+- `GROQ_API_KEY` (opcional, habilita Groq para /pergunta e /jogo)
+- `GROQ_MODEL_FAST` (opcional, padrao: `llama-3.1-8b-instant`)
+- `GROQ_MODEL_SMART` (opcional, padrao: `llama-3.1-70b-versatile`)
+- `LLM_PRIMARY` (opcional, `gemini` ou `groq`, padrao: `gemini`)
+- `LLM_TIMEOUT_MS` (opcional, padrao: `12000`)
+- `LLM_COOLDOWN_MS` (opcional, padrao: `600000`)
+- `LLM_CACHE_TTL_MS` (opcional, padrao: `180000`)
+- `LLM_MAX_OUTPUT_TOKENS_SHORT` (opcional, padrao: `300`)
+- `LLM_MAX_OUTPUT_TOKENS_LONG` (opcional, padrao: `800`)
 - `ALLOW_ADMIN_EDIT` (opcional, `true` libera /nivel em outros users)
 - `STEAM_API_KEY` (obrigatorio para recursos Steam)
 - `LLM_API_KEY` (opcional, stub de LLM legacy)
@@ -39,10 +48,17 @@ Notas:
 - Para migrar dados legados em JSON, use `MIGRATE_FROM_JSON=true` na primeira inicializacao.
 - A migracao cria as tabelas automaticamente e registra o total de itens migrados nos logs.
 
-## Gemini
-Configure no `.env`:
+## Multi-LLM (Gemini + Groq)
+- O bot usa Gemini e Groq com selecao automatica por intent (rapido vs resposta profunda).
+- Se um provider falhar (429/5xx/timeout), entra em cooldown e o outro assume.
+- Ha cache por 3 minutos para reduzir chamadas repetidas.
+
+Configurar no `.env`:
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL` (padrao: `gemini-2.5-flash`)
+- `GROQ_API_KEY`
+- `GROQ_MODEL_FAST` / `GROQ_MODEL_SMART`
+- `LLM_PRIMARY` (padrao: `gemini`)
 
 Checklist para trocar a key no Render:
 1) Atualize `GEMINI_API_KEY` no Render
