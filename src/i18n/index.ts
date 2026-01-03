@@ -8,8 +8,24 @@ type Vars = Record<string, string | number>;
 type TranslationMap = Record<string, string>;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const en = JSON.parse(readFileSync(join(__dirname, 'en.json'), 'utf8')) as TranslationMap;
-const pt = JSON.parse(readFileSync(join(__dirname, 'pt.json'), 'utf8')) as TranslationMap;
+
+function loadJson(fileName: string): TranslationMap {
+  const localPath = join(__dirname, fileName);
+  try {
+    return JSON.parse(readFileSync(localPath, 'utf8')) as TranslationMap;
+  } catch {
+    const fallbackPath = join(process.cwd(), 'src', 'i18n', fileName);
+    try {
+      return JSON.parse(readFileSync(fallbackPath, 'utf8')) as TranslationMap;
+    } catch (error) {
+      console.warn(`[i18n] Missing translation file: ${fileName}`, error);
+      return {};
+    }
+  }
+}
+
+const en = loadJson('en.json');
+const pt = loadJson('pt.json');
 
 const resources: Record<GuildLanguage, TranslationMap> = { en, pt };
 

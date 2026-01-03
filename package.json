@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p .",
+    "build": "tsc -p . && node scripts/copy-i18n.cjs",
     "start": "node dist/index.js",
     "check": "npm run lint && tsc -p . --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
