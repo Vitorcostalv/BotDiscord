@@ -124,6 +124,10 @@ function buildMovieFields(
   });
 }
 
+function buildErrorId(): string {
+  return `E-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
+
 export const recomendarCommand = {
   data: new SlashCommandBuilder()
     .setName('recomendar')
@@ -232,6 +236,7 @@ export const recomendarCommand = {
           let embed = createSuziEmbed('primary').setTitle(`${EMOJI_MOVIE} ${t('recommend.movie.result.title')}`);
           if (result.recommendations.length < 3) {
             const reason = result.errorReason ?? 'filtered_all_closed_ending';
+            const errorId = reason === 'json_parse_failed' ? buildErrorId() : null;
             const errorMap: Record<string, { title: string; desc: string }> = {
               json_parse_failed: {
                 title: t('recommend.movie.result.parse_failed.title'),
@@ -253,6 +258,14 @@ export const recomendarCommand = {
             const fallback = errorMap.filtered_all_closed_ending;
             const message = errorMap[reason] ?? fallback;
             embed = buildEmptyEmbed(message.title, message.desc);
+            if (errorId) {
+              embed.setFooter({ text: t('recommend.movie.result.error_id', { id: errorId }) });
+              logError('SUZI-CMD-002', new Error('Movie reco parse failed'), {
+                guildId,
+                userId: interaction.user.id,
+                errorId,
+              });
+            }
           } else {
             const lines: string[] = [];
             if (genreValue.trim()) {

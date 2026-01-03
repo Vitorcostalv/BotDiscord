@@ -1,5 +1,9 @@
 import { getTranslator } from '../i18n/index.js';
+import { callGemini } from '../llm/providers/gemini.js';
+import { callGroq } from '../llm/providers/groq.js';
 import { askWithMessages, type RouterAskResult } from '../llm/router.js';
+import type { LlmRequest } from '../llm/types.js';
+import { parseLLMJsonSafe } from '../utils/llmJson.js';
 import { logInfo, logWarn } from '../utils/logging.js';
 
 import { listUserReviews, type UserReviewItem } from './reviewService.js';
@@ -92,73 +96,6 @@ function sanitizeSummary(text: unknown, maxLen: number): string {
   return `${normalized.slice(0, Math.max(0, maxLen - 3)).trimEnd()}...`;
 }
 
-function extractCodeBlock(text: string): string | null {
-  const jsonMatch = /```json\s*([\s\S]*?)```/i.exec(text);
-  if (jsonMatch?.[1]) return jsonMatch[1].trim();
-  const anyMatch = /```([\s\S]*?)```/i.exec(text);
-  if (anyMatch?.[1]) return anyMatch[1].trim();
-  return null;
-}
-
-function extractBalancedJson(text: string): string | null {
-  const start = text.indexOf('{');
-  if (start === -1) return null;
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = start; i < text.length; i += 1) {
-    const char = text[i];
-    if (inString) {
-      if (escape) {
-        escape = false;
-      } else if (char === '\\') {
-        escape = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === '{') depth += 1;
-    if (char === '}') depth -= 1;
-    if (depth === 0 && i > start) {
-      return text.slice(start, i + 1);
-    }
-  }
-  return null;
-}
-
-function parseLLMJsonSafe(raw: string): { data?: unknown; parseOk: boolean } {
-  try {
-    return { data: JSON.parse(raw), parseOk: true };
-  } catch {
-    // continue
-  }
-
-  const codeBlock = extractCodeBlock(raw);
-  if (codeBlock) {
-    try {
-      return { data: JSON.parse(codeBlock), parseOk: true };
-    } catch {
-      // continue
-    }
-  }
-
-  const balanced = extractBalancedJson(raw);
-  if (balanced) {
-    try {
-      return { data: JSON.parse(balanced), parseOk: true };
-    } catch {
-      // continue
-    }
-  }
-
-  return { parseOk: false };
-}
-
 function parseCandidateTitles(raw: string): { titles: string[]; parseOk: boolean } {
   const parsed = parseLLMJsonSafe(raw);
   const titles: string[] = [];
@@ -173,7 +110,7 @@ function parseCandidateTitles(raw: string): { titles: string[]; parseOk: boolean
     titles.push(normalized);
   };
 
-  if (parsed.parseOk) {
+  if (parsed.ok) {
     const data = parsed.data;
     const list = Array.isArray(data)
       ? data
@@ -204,12 +141,12 @@ function parseCandidateTitles(raw: string): { titles: string[]; parseOk: boolean
     }
   }
 
-  return { titles: titles.slice(0, 10), parseOk: parsed.parseOk };
+  return { titles: titles.slice(0, 10), parseOk: parsed.ok };
 }
 
 function parseRecommendationEntries(raw: string): { entries: MovieRecommendation[]; parseOk: boolean } {
   const parsed = parseLLMJsonSafe(raw);
-  if (!parsed.parseOk || !parsed.data || typeof parsed.data !== 'object') {
+  if (!parsed.ok || !parsed.data || typeof parsed.data !== 'object') {
     return { entries: [], parseOk: false };
   }
 
@@ -271,22 +208,62 @@ async function fixJsonWithLlm(
   t: (key: string, vars?: Record<string, string | number>) => string,
   guildId: string,
   userId: string,
-): Promise<string | null> {
+  provider: RouterAskResult['provider'],
+  model: string,
+): Promise<{ text: string | null; response: RouterAskResult | null }> {
   const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const prompt = [t('recommend.llm.fix_json'), t('recommend.llm.schema'), trimmed.slice(0, 4000)].join('\n');
-  const response = await askWithMessages({
+  if (!trimmed) return { text: null, response: null };
+
+  const request: LlmRequest = {
     messages: [
       { role: 'system', content: t('recommend.llm.fix_json.system') },
-      { role: 'user', content: prompt },
+      {
+        role: 'user',
+        content: [t('recommend.llm.fix_json'), t('recommend.llm.schema'), trimmed.slice(0, 4000)].join('\n'),
+      },
     ],
-    intentOverride: 'recommendation',
-    guildId,
-    userId,
     maxOutputTokens: 600,
-  });
-  if (response.source !== 'llm') return null;
-  return response.text;
+    timeoutMs: 10_000,
+  };
+
+  const response =
+    provider === 'gemini'
+      ? await callGemini(request, model)
+      : provider === 'groq'
+        ? await callGroq(request, model)
+        : null;
+
+  if (!response || !response.ok) {
+    return {
+      text: null,
+      response: response
+        ? {
+            text: '',
+            provider: response.provider,
+            model: response.model,
+            latencyMs: response.latencyMs,
+            intent: 'recommendation',
+            fromCache: false,
+            source: 'fallback',
+            errorType: response.errorType,
+          }
+        : null,
+    };
+  }
+
+  return {
+    text: response.text,
+    response: {
+      text: response.text,
+      provider: response.provider,
+      model: response.model,
+      latencyMs: response.latencyMs,
+      intent: 'recommendation',
+      fromCache: false,
+      source: 'llm',
+      errorType: undefined,
+    },
+  };
 }
 
 async function generateCandidates(
@@ -376,13 +353,52 @@ async function validateCandidates(
 
   let parsed = parseRecommendationEntries(response.text);
   if (!parsed.parseOk) {
-    const fixed = await fixJsonWithLlm(response.text, t, input.guildId, input.userId);
-    if (fixed) {
-      const fixedParsed = parseRecommendationEntries(fixed);
+    logWarn('SUZI-RECO-001', new Error('Movie reco parse failed'), {
+      guildId: input.guildId,
+      userId: input.userId,
+      provider: response.provider,
+      model: response.model,
+      rawLength: response.text.length,
+      stage: 'validate',
+    });
+    logInfo('SUZI-RECO-001', 'Movie reco repair start', {
+      guildId: input.guildId,
+      userId: input.userId,
+      provider: response.provider,
+      model: response.model,
+      rawLength: response.text.length,
+    });
+    const repaired = await fixJsonWithLlm(response.text, t, input.guildId, input.userId, response.provider, response.model);
+    if (repaired.text) {
+      const fixedParsed = parseRecommendationEntries(repaired.text);
       if (fixedParsed.parseOk) {
         parsed = fixedParsed;
-        response = { ...response, text: fixed };
+        response = { ...response, text: repaired.text };
+        logInfo('SUZI-RECO-001', 'Movie reco repair success', {
+          guildId: input.guildId,
+          userId: input.userId,
+          provider: response.provider,
+          model: response.model,
+          rawLength: response.text.length,
+        });
+      } else {
+        logWarn('SUZI-RECO-001', new Error('Movie reco repair parse failed'), {
+          guildId: input.guildId,
+          userId: input.userId,
+          provider: response.provider,
+          model: response.model,
+          rawLength: response.text.length,
+        });
       }
+    } else {
+      logWarn('SUZI-RECO-001', new Error('Movie reco repair failed'), {
+        guildId: input.guildId,
+        userId: input.userId,
+        provider: response.provider,
+        model: response.model,
+        rawLength: response.text.length,
+        errorType: repaired.response?.errorType,
+      });
     }
   }
 
@@ -442,6 +458,16 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
     if (candidatesResult.response.source !== 'llm') {
       errorReason = resolveErrorReason(candidatesResult.response);
       return;
+    }
+
+    if (!candidatesResult.parseOk) {
+      logWarn('SUZI-RECO-001', new Error('Movie reco candidates parse failed'), {
+        guildId: input.guildId,
+        userId: input.userId,
+        provider: candidatesResult.response.provider,
+        model: candidatesResult.response.model,
+        rawLength: candidatesResult.rawLength,
+      });
     }
 
     if (!candidatesResult.candidates.length) {
