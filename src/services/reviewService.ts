@@ -69,9 +69,9 @@ type LegacyGuildReviewStore = {
 export type AddOrUpdateReviewInput = {
   type: ReviewMediaType;
   name: string;
-  stars: number;
-  category: ReviewCategory;
-  opinion: string;
+  stars?: number | null;
+  category?: ReviewCategory | null;
+  opinion?: string | null;
   platform?: string;
   tags?: string[];
   favorite?: boolean | null;
@@ -144,6 +144,8 @@ export type ToggleFavoriteResult =
 
 const REVIEWS_PATH = join(process.cwd(), 'data', 'reviews.json');
 const MAX_FAVORITES = 10;
+const DEFAULT_STARS = 3;
+const DEFAULT_CATEGORY: ReviewCategory = 'JOGAVEL';
 
 const EMPTY_CATEGORY_COUNTS: Record<ReviewCategory, number> = {
   AMEI: 0,
@@ -344,6 +346,30 @@ export function normalizeMediaKey(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+export function normalizeMediaName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
+function resolveStars(input: number | null | undefined, fallback?: number): number {
+  const raw = input ?? fallback ?? DEFAULT_STARS;
+  return Math.max(1, Math.min(5, Math.round(raw)));
+}
+
+function resolveCategory(input: ReviewCategory | null | undefined, fallback?: ReviewCategory): ReviewCategory {
+  return input ?? fallback ?? DEFAULT_CATEGORY;
+}
+
+function resolveOpinion(input: string | null | undefined, fallback?: string): string {
+  if (input === null || input === undefined) {
+    return fallback ?? '';
+  }
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return fallback ?? '';
+  }
+  return trimmed;
+}
+
 function toMediaEntry(item: ReviewItemRow): MediaEntry {
   return {
     name: item.name,
@@ -377,7 +403,7 @@ function addOrUpdateReviewDb(
   userId: string,
   payload: AddOrUpdateReviewInput,
 ): AddOrUpdateReviewResult {
-  const name = payload.name.trim();
+  const name = normalizeMediaName(payload.name);
   const itemKey = normalizeMediaKey(name);
   const existingReviewRow = getReview(guildId, userId, payload.type, itemKey);
   const existingItemRow = getReviewItem(guildId, payload.type, itemKey);
@@ -398,9 +424,9 @@ function addOrUpdateReviewDb(
   const romanceClosed = romanceClosedRaw ?? undefined;
 
   const review: ReviewEntry = {
-    stars: payload.stars,
-    category: payload.category,
-    opinion: payload.opinion,
+    stars: resolveStars(payload.stars, existingReviewRow?.stars),
+    category: resolveCategory(payload.category, existingReviewRow?.category),
+    opinion: resolveOpinion(payload.opinion, existingReviewRow?.opinion),
     platform,
     tags,
     favorite,
@@ -586,11 +612,11 @@ function listTopItemsDb(guildId: string, filters: ListTopFilters = {}): TopItem[
     if (b.stats.starsSum !== a.stats.starsSum) {
       return b.stats.starsSum - a.stats.starsSum;
     }
-    if (b.stats.count !== a.stats.count) {
-      return b.stats.count - a.stats.count;
-    }
     if (b.stats.avgStars !== a.stats.avgStars) {
       return b.stats.avgStars - a.stats.avgStars;
+    }
+    if (b.stats.count !== a.stats.count) {
+      return b.stats.count - a.stats.count;
     }
     return a.name.localeCompare(b.name);
   });
@@ -756,7 +782,7 @@ export function addOrUpdateReview(
   const store = readStore();
   const guild = ensureGuild(store, guildId);
 
-  const name = payload.name.trim();
+  const name = normalizeMediaName(payload.name);
   const itemKey = normalizeMediaKey(name);
   const item = ensureItem(guild, payload.type, itemKey, name);
 
@@ -779,9 +805,9 @@ export function addOrUpdateReview(
   const romanceClosed = romanceClosedRaw ?? undefined;
 
   const review: ReviewEntry = {
-    stars: payload.stars,
-    category: payload.category,
-    opinion: payload.opinion,
+    stars: resolveStars(payload.stars, existing?.stars),
+    category: resolveCategory(payload.category, existing?.category),
+    opinion: resolveOpinion(payload.opinion, existing?.opinion),
     platform,
     tags,
     favorite,
@@ -970,11 +996,11 @@ export function listTopItems(guildId: string, filters: ListTopFilters = {}): Top
     if (b.stats.starsSum !== a.stats.starsSum) {
       return b.stats.starsSum - a.stats.starsSum;
     }
-    if (b.stats.count !== a.stats.count) {
-      return b.stats.count - a.stats.count;
-    }
     if (b.stats.avgStars !== a.stats.avgStars) {
       return b.stats.avgStars - a.stats.avgStars;
+    }
+    if (b.stats.count !== a.stats.count) {
+      return b.stats.count - a.stats.count;
     }
     return a.name.localeCompare(b.name);
   });

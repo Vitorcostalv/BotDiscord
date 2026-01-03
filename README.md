@@ -4,7 +4,7 @@
 - `/ping` - Latencia rapida.
 - `/jogo nome:<texto> plataforma:<opcional>` - Ajuda estruturada para um jogo.
 - `/pergunta tipo:<JOGO|FILME|TUTORIAL> pergunta:<texto>` - Perguntas sobre jogos, filmes e tutoriais (tipo opcional).
-- `/review acao:<add|remove|view|my|top|favorite> tipo:<GAME|MOVIE>` - Avaliacoes de jogos e filmes com ranking e favoritos.
+- `/review add|remove|view|my|top|favorite` - Avaliacoes de jogos e filmes com ranking e favoritos.
 - `/recomendar acao:<jogo|filme|tutorial>` - Recomendacoes personalizadas baseadas em reviews.
 - `/register nome_jogador:<texto> nivel:<opcional>` - Registra o perfil do jogador.
 - `/perfil user:<opcional>` - Mostra o perfil do player com paginas.
@@ -83,25 +83,27 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 
 ## Avaliacoes de Jogos e Filmes
 - As avaliacoes ficam em `data/reviews.json` (por servidor/guild e tipo).
-- Nota de 1 a 5 estrelas, categoria AMEI/JOGAVEL/RUIM e opiniao curta (max 400).
-- Tags opcionais (max 5). Favoritos aparecem no `/perfil` com badge ðŸŽ®/ðŸŽ¬.
-- Use `tipo:GAME` (padrao) ou `tipo:MOVIE`.
-- Ranking do `/review acao:top`: soma de estrelas (total), desempate por numero de avaliacoes, media e nome.
+- Estrelas e categoria sao opcionais no `/review add` (padrao: 3 estrelas, categoria jogavel).
+- Opiniao e opcional (max 400).
+- Favoritos aparecem no `/perfil` com badge ÐYZŠ/ÐYZE.
+- Use `tipo:jogo` (padrao) ou `tipo:filme`.
+- Ranking do `/review top`: soma de estrelas (total), desempate por media, votos e nome.
 
 ### Comandos /review
-- `/review acao:add tipo:<GAME|MOVIE> nome:<texto> estrelas:<1..5> categoria:<AMEI|JOGAVEL|RUIM> opiniao:<texto> plataforma:<opcional> tags:<CSV> favorito:<opcional> romance_fechado:<opcional>`
-- `/review acao:remove tipo:<GAME|MOVIE> nome:<texto>`
-- `/review acao:view tipo:<GAME|MOVIE> nome:<texto>`
-- `/review acao:my tipo:<GAME|MOVIE> categoria:<opcional> ordenar:<stars|recent>`
-- `/review acao:top tipo:<GAME|MOVIE> categoria:<opcional> min_avaliacoes:<opcional> limite:<opcional>` (padrao: tipo GAME, min 1, limite 10)
-- `/review acao:favorite tipo:<GAME|MOVIE> nome:<texto>`
+- `/review add nome:<texto> tipo:<jogo|filme> categoria:<amei|jogavel|ruim> estrelas:<1..5> opiniao:<texto>`
+- `/review remove nome:<texto> tipo:<jogo|filme>`
+- `/review view nome:<texto> tipo:<jogo|filme>`
+- `/review my tipo:<jogo|filme|all> categoria:<amei|jogavel|ruim|all>`
+- `/review top tipo:<jogo|filme|all> categoria:<amei|jogavel|ruim|all> limite:<5..20>` (padrao: all, limite 10)
+- `/review favorite nome:<texto> tipo:<jogo|filme>`
 
 ### Exemplos
-- `/review acao:add tipo:GAME nome:"Baldur's Gate 3" estrelas:5 categoria:AMEI opiniao:"Insano." tags:"historia, combate" favorito:true`
-- `/review acao:add tipo:MOVIE nome:"Your Name" estrelas:5 categoria:AMEI opiniao:"Lindo." romance_fechado:true`
-- `/review acao:view tipo:GAME nome:"Baldur's Gate 3"`
-- `/review acao:top tipo:GAME categoria:AMEI limite:10`
-- `/review acao:favorite tipo:MOVIE nome:"Your Name"`
+- `/review add nome:"Baldur's Gate 3" estrelas:5 categoria:amei opiniao:"absurdo de bom"`
+- `/review add nome:"Your Name" tipo:filme estrelas:5 categoria:amei opiniao:"romance fechado, perfeito"`
+- `/review view nome:"Baldur's Gate 3"`
+- `/review top`
+- `/review top tipo:filme`
+- `/review my tipo:jogo categoria:amei`
 
 ## Recomendacoes
 - `/recomendar jogo` usa suas reviews e o ranking do servidor.
@@ -273,3 +275,5 @@ O catalogo completo fica em `src/errors/catalog.ts`.
 Notas:
 - `.env.example` e apenas referencia (se existir). Em producao use somente as variaveis do host.
 - O deploy usa `BUILD=npm ci && npm run build` e inicia com `npm start`.
+
+

@@ -5,10 +5,10 @@ import {
   getGuildReviewSummary,
   getMediaStats,
   getUserReviewCount,
-  isRomanceClosed,
   listTopItems,
   listUserReviews,
   normalizeMediaKey,
+  normalizeMediaName,
   removeReview,
   toggleFavorite,
   type ReviewCategory,
@@ -23,7 +23,6 @@ const EMOJI_HEART = '\u{1F496}';
 const EMOJI_GAME = '\u{1F3AE}';
 const EMOJI_SKULL = '\u{1F480}';
 const EMOJI_STAR = '\u2B50';
-const EMOJI_TAG = '\u{1F3F7}\uFE0F';
 const EMOJI_MOVIE = '\u{1F3AC}';
 const STAR_FILLED = '\u2605';
 const STAR_EMPTY = '\u2606';
@@ -34,32 +33,41 @@ const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
   RUIM: EMOJI_SKULL,
 };
 
+const CATEGORY_LABEL: Record<ReviewCategory, string> = {
+  AMEI: 'amei',
+  JOGAVEL: 'jogavel',
+  RUIM: 'ruim',
+};
+
 const TYPE_EMOJI: Record<ReviewMediaType, string> = {
   GAME: EMOJI_GAME,
   MOVIE: EMOJI_MOVIE,
 };
 
+const TYPE_LABEL: Record<ReviewMediaType, string> = {
+  GAME: 'jogo',
+  MOVIE: 'filme',
+};
+
 const CATEGORY_CHOICES = [
-  { name: `AMEI ${EMOJI_HEART}`, value: 'AMEI' },
-  { name: `JOGAVEL ${EMOJI_GAME}`, value: 'JOGAVEL' },
-  { name: `RUIM ${EMOJI_SKULL}`, value: 'RUIM' },
+  { name: `${EMOJI_HEART} amei`, value: 'AMEI' },
+  { name: `${EMOJI_GAME} jogavel`, value: 'JOGAVEL' },
+  { name: `${EMOJI_SKULL} ruim`, value: 'RUIM' },
 ];
 
-type ReviewAction = 'add' | 'remove' | 'view' | 'my' | 'top' | 'favorite';
-
-const ACTION_CHOICES = [
-  { name: 'add', value: 'add' },
-  { name: 'remove', value: 'remove' },
-  { name: 'view', value: 'view' },
-  { name: 'my', value: 'my' },
-  { name: 'top', value: 'top' },
-  { name: 'favorite', value: 'favorite' },
-];
+const CATEGORY_FILTER_CHOICES = [{ name: 'todas', value: 'ALL' }, ...CATEGORY_CHOICES];
 
 const TYPE_CHOICES = [
-  { name: `${EMOJI_GAME} GAME`, value: 'GAME' },
-  { name: `${EMOJI_MOVIE} MOVIE`, value: 'MOVIE' },
+  { name: `${EMOJI_GAME} jogo`, value: 'GAME' },
+  { name: `${EMOJI_MOVIE} filme`, value: 'MOVIE' },
 ];
+
+const TYPE_FILTER_CHOICES = [{ name: 'todos', value: 'ALL' }, ...TYPE_CHOICES];
+
+type ReviewCategoryFilter = ReviewCategory | 'ALL';
+type ReviewTypeFilter = ReviewMediaType | 'ALL';
+
+type ReviewSubcommand = 'add' | 'remove' | 'view' | 'my' | 'top' | 'favorite';
 
 function safeText(text: string, maxLen: number): string {
   const normalized = text.trim();
@@ -75,28 +83,21 @@ function formatStars(value: number): string {
 }
 
 function formatCategory(category: ReviewCategory): string {
-  return `${CATEGORY_EMOJI[category]} ${category}`;
+  return `${CATEGORY_EMOJI[category]} ${CATEGORY_LABEL[category]}`;
 }
 
 function formatType(type: ReviewMediaType): string {
-  return `${TYPE_EMOJI[type]} ${type}`;
+  return `${TYPE_EMOJI[type]} ${TYPE_LABEL[type]}`;
 }
 
-function parseTags(input?: string): { ok: true; tags: string[] } | { ok: false; message: string } {
-  if (!input) return { ok: true, tags: [] };
-  const raw = input
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-    .map((tag) => tag.toLowerCase());
-  const unique: string[] = [];
-  for (const tag of raw) {
-    if (!unique.includes(tag)) unique.push(tag);
-  }
-  if (unique.length > 5) {
-    return { ok: false, message: 'Limite de 5 tags. Use no maximo 5 termos.' };
-  }
-  return { ok: true, tags: unique };
+function resolveTypeFilter(value: ReviewTypeFilter | null): ReviewMediaType | undefined {
+  if (!value || value === 'ALL') return undefined;
+  return value;
+}
+
+function resolveCategoryFilter(value: ReviewCategoryFilter | null): ReviewCategory | undefined {
+  if (!value || value === 'ALL') return undefined;
+  return value;
 }
 
 function ensureGuild(interaction: ChatInputCommandInteraction): string | null {
@@ -110,77 +111,106 @@ function buildEmptyEmbed(title: string, description: string) {
   return createSuziEmbed('warning').setTitle(title).setDescription(description);
 }
 
+function pickTopCategory(stats: Record<ReviewCategory, number>): ReviewCategory {
+  const entries = Object.entries(stats) as Array<[ReviewCategory, number]>;
+  entries.sort((a, b) => b[1] - a[1]);
+  return entries[0]?.[0] ?? 'JOGAVEL';
+}
+
 export const reviewCommand = {
   data: new SlashCommandBuilder()
     .setName('review')
     .setDescription('Gerencie avaliacoes de jogos e filmes')
-    .addStringOption((option) =>
-      option
-        .setName('acao')
-        .setDescription('O que deseja fazer')
-        .setRequired(true)
-        .addChoices(...ACTION_CHOICES),
-    )
-    .addStringOption((option) =>
-      option
-        .setName('tipo')
-        .setDescription('Tipo da avaliacao (GAME/MOVIE)')
-        .setRequired(false)
-        .addChoices(...TYPE_CHOICES),
-    )
-    .addStringOption((option) => option.setName('nome').setDescription('Nome do item').setRequired(false))
-    .addIntegerOption((option) =>
-      option.setName('estrelas').setDescription('Nota (1 a 5)').setRequired(false).setMinValue(1).setMaxValue(5),
-    )
-    .addStringOption((option) =>
-      option
-        .setName('categoria')
-        .setDescription('Categoria da avaliacao')
-        .setRequired(false)
-        .addChoices(...CATEGORY_CHOICES),
-    )
-    .addStringOption((option) =>
-      option.setName('opiniao').setDescription('Sua opiniao (max 400)').setRequired(false).setMaxLength(400),
-    )
-    .addStringOption((option) =>
-      option.setName('plataforma').setDescription('Plataforma (ex: PC, PS5)').setRequired(false),
-    )
-    .addStringOption((option) =>
-      option.setName('tags').setDescription('Tags (CSV: historia, combate)').setRequired(false),
-    )
-    .addBooleanOption((option) =>
-      option.setName('favorito').setDescription('Marca como favorito').setRequired(false),
-    )
-    .addBooleanOption((option) =>
-      option
-        .setName('romance_fechado')
-        .setDescription('Somente para filmes: final fechado')
-        .setRequired(false),
-    )
-    .addStringOption((option) =>
-      option
-        .setName('ordenar')
-        .setDescription('Ordenar por')
-        .setRequired(false)
-        .addChoices(
-          { name: 'stars', value: 'stars' },
-          { name: 'recent', value: 'recent' },
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('add')
+        .setDescription('Adicionar ou atualizar uma review')
+        .addStringOption((option) => option.setName('nome').setDescription('Nome do item').setRequired(true))
+        .addStringOption((option) =>
+          option.setName('tipo').setDescription('Tipo do item').setRequired(false).addChoices(...TYPE_CHOICES),
+        )
+        .addStringOption((option) =>
+          option
+            .setName('categoria')
+            .setDescription('Categoria da avaliacao')
+            .setRequired(false)
+            .addChoices(...CATEGORY_CHOICES),
+        )
+        .addIntegerOption((option) =>
+          option.setName('estrelas').setDescription('Nota (1 a 5)').setRequired(false).setMinValue(1).setMaxValue(5),
+        )
+        .addStringOption((option) =>
+          option
+            .setName('opiniao')
+            .setDescription('Sua opiniao (max 400)')
+            .setRequired(false)
+            .setMaxLength(400),
         ),
     )
-    .addIntegerOption((option) =>
-      option
-        .setName('min_avaliacoes')
-        .setDescription('Minimo de avaliacoes')
-        .setRequired(false)
-        .setMinValue(1),
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('remove')
+        .setDescription('Remover uma review')
+        .addStringOption((option) => option.setName('nome').setDescription('Nome do item').setRequired(true))
+        .addStringOption((option) =>
+          option.setName('tipo').setDescription('Tipo do item').setRequired(false).addChoices(...TYPE_CHOICES),
+        ),
     )
-    .addIntegerOption((option) =>
-      option
-        .setName('limite')
-        .setDescription('Quantidade no ranking (max 25)')
-        .setRequired(false)
-        .setMinValue(1)
-        .setMaxValue(25),
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('view')
+        .setDescription('Ver a review do servidor')
+        .addStringOption((option) => option.setName('nome').setDescription('Nome do item').setRequired(true))
+        .addStringOption((option) =>
+          option.setName('tipo').setDescription('Tipo do item').setRequired(false).addChoices(...TYPE_CHOICES),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('my')
+        .setDescription('Lista suas reviews')
+        .addStringOption((option) =>
+          option.setName('tipo').setDescription('Tipo do item').setRequired(false).addChoices(...TYPE_FILTER_CHOICES),
+        )
+        .addStringOption((option) =>
+          option
+            .setName('categoria')
+            .setDescription('Filtra por categoria')
+            .setRequired(false)
+            .addChoices(...CATEGORY_FILTER_CHOICES),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('top')
+        .setDescription('Ranking do servidor')
+        .addStringOption((option) =>
+          option.setName('tipo').setDescription('Tipo do item').setRequired(false).addChoices(...TYPE_FILTER_CHOICES),
+        )
+        .addStringOption((option) =>
+          option
+            .setName('categoria')
+            .setDescription('Filtra por categoria')
+            .setRequired(false)
+            .addChoices(...CATEGORY_FILTER_CHOICES),
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName('limite')
+            .setDescription('Quantidade no ranking (5 a 20)')
+            .setRequired(false)
+            .setMinValue(5)
+            .setMaxValue(20),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('favorite')
+        .setDescription('Favoritar um item')
+        .addStringOption((option) => option.setName('nome').setDescription('Nome do item').setRequired(true))
+        .addStringOption((option) =>
+          option.setName('tipo').setDescription('Tipo do item').setRequired(false).addChoices(...TYPE_CHOICES),
+        ),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
@@ -193,17 +223,12 @@ export const reviewCommand = {
       return;
     }
 
-    const action = interaction.options.getString('acao', true) as ReviewAction;
-    const type = (interaction.options.getString('tipo') as ReviewMediaType | null) ?? 'GAME';
+    const action = interaction.options.getSubcommand() as ReviewSubcommand;
 
     try {
       if (action === 'add') {
-        const name = interaction.options.getString('nome')?.trim();
-        if (!name) {
-          const embed = buildEmptyEmbed('Informe o item', 'Use /review acao:add nome:<texto>.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
+        const nameRaw = interaction.options.getString('nome', true);
+        const name = normalizeMediaName(nameRaw);
         const itemKey = normalizeMediaKey(name);
         if (!itemKey) {
           const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o item.');
@@ -211,44 +236,15 @@ export const reviewCommand = {
           return;
         }
 
+        const type = (interaction.options.getString('tipo') as ReviewMediaType | null) ?? 'GAME';
         const stars = interaction.options.getInteger('estrelas');
-        if (!stars) {
-          const embed = buildEmptyEmbed('Informe as estrelas', 'Use /review acao:add estrelas:<1..5>.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
         const category = interaction.options.getString('categoria') as ReviewCategory | null;
-        if (!category) {
-          const embed = buildEmptyEmbed('Informe a categoria', 'Use /review acao:add categoria:<AMEI|JOGAVEL|RUIM>.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
-        const opinion = interaction.options.getString('opiniao')?.trim();
-        if (!opinion) {
-          const embed = buildEmptyEmbed('Informe a opiniao', 'Use /review acao:add opiniao:<texto>.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
-        const platform = interaction.options.getString('plataforma');
-        const tagsInput = interaction.options.getString('tags');
-        const favoriteInput = interaction.options.getBoolean('favorito');
-        const romanceClosedInput = interaction.options.getBoolean('romance_fechado');
+        const opinion = interaction.options.getString('opiniao');
 
-        if (opinion.length > 400) {
+        if (opinion && opinion.trim().length > 400) {
           const embed = buildEmptyEmbed('Opiniao muito longa', 'Use no maximo 400 caracteres.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
-        }
-
-        let tags: string[] | undefined;
-        if (tagsInput !== null) {
-          const tagResult = parseTags(tagsInput);
-          if (!tagResult.ok) {
-            const embed = buildEmptyEmbed('Tags invalidas', tagResult.message);
-            await safeRespond(interaction, { embeds: [embed] });
-            return;
-          }
-          tags = tagResult.tags;
         }
 
         const result = addOrUpdateReview(guildId, interaction.user.id, {
@@ -256,19 +252,16 @@ export const reviewCommand = {
           name,
           stars,
           category,
-          opinion,
-          platform: platform ?? undefined,
-          tags,
-          favorite: favoriteInput ?? undefined,
-          romanceClosed: type === 'MOVIE' ? romanceClosedInput ?? undefined : undefined,
+          opinion: opinion ?? undefined,
         });
+
         logInfo('SUZI-CMD-002', 'Review salva', {
           guildId,
           userId: interaction.user.id,
           itemKey: result.itemKey,
           type,
-          stars,
-          category,
+          stars: result.review.stars,
+          category: result.review.category,
         });
 
         const embed = createSuziEmbed(result.status === 'created' ? 'success' : 'primary')
@@ -276,50 +269,38 @@ export const reviewCommand = {
           .setDescription(
             result.status === 'created'
               ? 'Sua avaliacao foi salva no servidor.'
-              : 'Sua avaliacao foi atualizada.',
+              : 'Sua avaliacao foi atualizada (campos omitidos foram mantidos).',
           )
           .addFields(
             { name: 'Item', value: safeText(result.item.name, 256) },
-            { name: 'Tipo', value: formatType(type), inline: true },
-            { name: `${EMOJI_STAR} Estrelas`, value: `${formatStars(result.review.stars)} (${result.review.stars}/5)` },
-            { name: 'Categoria', value: formatCategory(result.review.category), inline: true },
+            { name: 'Tipo', value: formatType(result.type), inline: true },
             {
-              name: 'Plataforma',
-              value: result.review.platform ? safeText(result.review.platform, 64) : '-',
+              name: `${EMOJI_STAR} Estrelas`,
+              value: `${formatStars(result.review.stars)} (${result.review.stars}/5)`,
               inline: true,
             },
+            { name: 'Categoria', value: formatCategory(result.review.category), inline: true },
             {
-              name: `${EMOJI_TAG} Tags`,
-              value: result.review.tags?.length ? result.review.tags.map((tag) => `#${tag}`).join(' ') : '-',
+              name: 'Opiniao',
+              value: result.review.opinion ? safeText(result.review.opinion, 160) : 'Sem opiniao.',
             },
-            { name: 'Favorito', value: result.review.favorite ? 'Sim' : 'Nao', inline: true },
           );
-
-        if (type === 'MOVIE' && romanceClosedInput !== null) {
-          embed.addFields({
-            name: 'Romance fechado',
-            value: romanceClosedInput ? 'Sim' : 'Nao',
-            inline: true,
-          });
-        }
 
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
 
       if (action === 'remove') {
-        const name = interaction.options.getString('nome')?.trim();
-        if (!name) {
-          const embed = buildEmptyEmbed('Informe o item', 'Use /review acao:remove nome:<texto>.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
+        const nameRaw = interaction.options.getString('nome', true);
+        const name = normalizeMediaName(nameRaw);
         const itemKey = normalizeMediaKey(name);
         if (!itemKey) {
           const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o item.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
+
+        const type = (interaction.options.getString('tipo') as ReviewMediaType | null) ?? 'GAME';
 
         const result = removeReview(guildId, interaction.user.id, type, itemKey);
         if (!result.removed) {
@@ -340,12 +321,8 @@ export const reviewCommand = {
       }
 
       if (action === 'view') {
-        const name = interaction.options.getString('nome')?.trim();
-        if (!name) {
-          const embed = buildEmptyEmbed('Informe o item', 'Use /review acao:view nome:<texto>.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
+        const nameRaw = interaction.options.getString('nome', true);
+        const name = normalizeMediaName(nameRaw);
         const itemKey = normalizeMediaKey(name);
         if (!itemKey) {
           const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o item.');
@@ -353,6 +330,7 @@ export const reviewCommand = {
           return;
         }
 
+        const type = (interaction.options.getString('tipo') as ReviewMediaType | null) ?? 'GAME';
         const { item, reviews } = getMediaStats(guildId, type, itemKey);
         if (!item || item.stats.count <= 0) {
           const embed = buildEmptyEmbed('Sem reviews', 'Este item ainda nao foi avaliado no servidor.');
@@ -361,14 +339,12 @@ export const reviewCommand = {
         }
 
         const avgStars = item.stats.avgStars;
-        const counts = item.stats.categoryCounts;
-        const distribution = [
-          `${CATEGORY_EMOJI.AMEI} AMEI: ${counts.AMEI}`,
-          `${CATEGORY_EMOJI.JOGAVEL} JOGAVEL: ${counts.JOGAVEL}`,
-          `${CATEGORY_EMOJI.RUIM} RUIM: ${counts.RUIM}`,
-        ].join('\n');
+        const totalStars = item.stats.starsSum;
+        const votes = item.stats.count;
+        const topCategory = pickTopCategory(item.stats.categoryCounts);
 
         const recentOpinions = reviews
+          .filter((entry) => entry.review.opinion?.trim())
           .slice()
           .sort((a, b) => b.review.updatedAt - a.review.updatedAt)
           .slice(0, 3)
@@ -377,56 +353,41 @@ export const reviewCommand = {
             return `- <@${entry.userId}> ${formatStars(entry.review.stars)} ${formatCategory(entry.review.category)}\n  "${opinion}"`;
           });
 
+        const voteLabel = votes === 1 ? 'voto' : 'votos';
+
         const embed = createSuziEmbed('primary')
           .setTitle(`Review do servidor - ${safeText(item.name, 256)}`)
           .addFields(
+            { name: 'Tipo', value: formatType(type), inline: true },
+            { name: 'Categoria', value: formatCategory(topCategory), inline: true },
             {
-              name: 'Media do servidor',
-              value: `${formatStars(avgStars)} (${avgStars.toFixed(1)}/5)`,
+              name: `${EMOJI_STAR} Ranking`,
+              value: `${totalStars} estrelas\n${votes} ${voteLabel}\nmedia ${avgStars.toFixed(1)}`,
               inline: true,
             },
-            { name: 'Total de avaliacoes', value: String(item.stats.count), inline: true },
-            { name: 'Categorias', value: distribution },
-            { name: 'Tipo', value: formatType(type), inline: true },
+            {
+              name: 'Opinioes recentes',
+              value: recentOpinions.length ? recentOpinions.join('\n') : 'Sem opinioes recentes.',
+            },
           );
-
-        if (item.platforms?.length) {
-          embed.addFields({
-            name: 'Plataformas',
-            value: safeText(item.platforms.join(', '), 256),
-          });
-        }
-
-        if (type === 'MOVIE') {
-          embed.addFields({
-            name: 'Romance fechado',
-            value: isRomanceClosed(item.stats)
-              ? `Sim (${item.stats.romanceClosedCount} fechado)`
-              : `Nao (${item.stats.romanceOpenCount} aberto)`,
-            inline: true,
-          });
-        }
-
-        embed.addFields({
-          name: 'Opinioes recentes',
-          value: recentOpinions.length ? recentOpinions.join('\n') : 'Sem opinioes recentes.',
-        });
 
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
 
       if (action === 'my') {
-        const category = interaction.options.getString('categoria') as ReviewCategory | null;
-        const order = interaction.options.getString('ordenar') as 'stars' | 'recent' | null;
+        const typeFilter = resolveTypeFilter(interaction.options.getString('tipo') as ReviewTypeFilter | null);
+        const categoryFilter = resolveCategoryFilter(
+          interaction.options.getString('categoria') as ReviewCategoryFilter | null,
+        );
 
         const reviews = listUserReviews(guildId, interaction.user.id, {
-          type,
-          category: category ?? undefined,
-          order: order ?? 'recent',
+          type: typeFilter,
+          category: categoryFilter,
+          order: 'recent',
           limit: 10,
         });
-        const totalReviews = getUserReviewCount(guildId, interaction.user.id, type);
+        const totalReviews = getUserReviewCount(guildId, interaction.user.id, typeFilter);
 
         if (!reviews.length) {
           const embed = buildEmptyEmbed('Sem reviews', 'Voce ainda nao avaliou nenhum item.');
@@ -441,9 +402,14 @@ export const reviewCommand = {
           )} ${formatType(entry.type)}${favoriteLabel}`;
         });
 
+        const filterLines = [
+          `Tipo: ${typeFilter ? formatType(typeFilter) : 'todos'}`,
+          `Categoria: ${categoryFilter ? formatCategory(categoryFilter) : 'todas'}`,
+        ].join('\n');
+
         const embed = createSuziEmbed('primary')
           .setTitle('Minhas avaliacoes')
-          .setDescription(`Total exibido: ${reviews.length} de ${totalReviews}`)
+          .setDescription(`${filterLines}\nTotal exibido: ${reviews.length} de ${totalReviews}`)
           .addFields({ name: 'Lista', value: lines.join('\n') });
 
         await safeRespond(interaction, { embeds: [embed] });
@@ -451,36 +417,39 @@ export const reviewCommand = {
       }
 
       if (action === 'top') {
-        const category = interaction.options.getString('categoria') as ReviewCategory | null;
-        const minReviews = interaction.options.getInteger('min_avaliacoes') ?? 1;
-        const limit = Math.min(interaction.options.getInteger('limite') ?? 10, 25);
-        const summary = getGuildReviewSummary(guildId, type);
+        const typeFilter = resolveTypeFilter(interaction.options.getString('tipo') as ReviewTypeFilter | null);
+        const categoryFilter = resolveCategoryFilter(
+          interaction.options.getString('categoria') as ReviewCategoryFilter | null,
+        );
+        const limitInput = interaction.options.getInteger('limite') ?? 10;
+        const limit = Math.min(20, Math.max(5, limitInput));
+        const summary = getGuildReviewSummary(guildId, typeFilter);
 
         logInfo('SUZI-CMD-002', 'Review ranking consultado', {
           guildId,
           totalItems: summary.totalItems,
           totalReviews: summary.totalReviews,
-          type,
+          type: typeFilter ?? 'ALL',
         });
 
         if (summary.totalReviews === 0) {
           const embed = buildEmptyEmbed(
             'Sem avaliacoes ainda',
-            'Ainda nao existem avaliacoes neste servidor. Use /review acao:add',
+            'Ainda nao existem avaliacoes neste servidor. Use /review add',
           );
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
         const list = listTopItems(guildId, {
-          type,
-          category: category ?? undefined,
-          minReviews,
+          type: typeFilter,
+          category: categoryFilter,
+          minReviews: 1,
           limit,
         });
 
         if (!list.length) {
-          const embed = buildEmptyEmbed('Sem ranking', 'Nenhum item atende aos filtros. Tente /review acao:top sem filtros.');
+          const embed = buildEmptyEmbed('Sem ranking', 'Nenhum item atende aos filtros. Tente /review top sem filtros.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -488,15 +457,19 @@ export const reviewCommand = {
         const lines = list.map((entry, index) => {
           const avg = entry.stats.avgStars;
           const totalStars = entry.stats.starsSum;
-          const countLabel = entry.stats.count === 1 ? 'avaliacao' : 'avaliacoes';
-          return `#${index + 1} ${safeText(entry.name, 40)} - ${EMOJI_STAR} ${totalStars} (${entry.stats.count} ${countLabel}, media ${avg.toFixed(1)})`;
+          const countLabel = entry.stats.count === 1 ? 'voto' : 'votos';
+          const typeLabel = typeFilter ? '' : ` ${formatType(entry.type)}`;
+          return `#${index + 1} ${safeText(entry.name, 40)}${typeLabel} - ${EMOJI_STAR} ${totalStars} (${entry.stats.count} ${countLabel}, media ${avg.toFixed(1)})`;
         });
+
+        const filterLines = [
+          `Tipo: ${typeFilter ? formatType(typeFilter) : 'todos'}`,
+          `Categoria: ${categoryFilter ? formatCategory(categoryFilter) : 'todas'}`,
+        ].join('\n');
 
         const embed = createSuziEmbed('primary')
           .setTitle('Ranking do servidor')
-          .setDescription(
-            `${category ? `Categoria: ${formatCategory(category)}\n` : ''}Tipo: ${formatType(type)}\nMinimo de avaliacoes: ${minReviews}`,
-          )
+          .setDescription(`${filterLines}\nLimite: ${limit}`)
           .addFields({ name: 'Top', value: lines.join('\n') });
 
         await safeRespond(interaction, { embeds: [embed] });
@@ -504,19 +477,16 @@ export const reviewCommand = {
       }
 
       if (action === 'favorite') {
-        const name = interaction.options.getString('nome')?.trim();
-        if (!name) {
-          const embed = buildEmptyEmbed('Informe o item', 'Use /review acao:favorite nome:<texto>.');
-          await safeRespond(interaction, { embeds: [embed] });
-          return;
-        }
-
+        const nameRaw = interaction.options.getString('nome', true);
+        const name = normalizeMediaName(nameRaw);
         const itemKey = normalizeMediaKey(name);
         if (!itemKey) {
           const embed = buildEmptyEmbed('Nome invalido', 'Use um nome valido para o item.');
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
+
+        const type = (interaction.options.getString('tipo') as ReviewMediaType | null) ?? 'GAME';
 
         const result = toggleFavorite(guildId, interaction.user.id, type, itemKey);
         if (!result.ok) {

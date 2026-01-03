@@ -150,10 +150,10 @@ export const recomendarCommand = {
 
       if (!combined.length) {
         if (wantsRomanceClosed) {
-          const embed = buildEmptyEmbed(
-            'Sem filmes com final fechado',
-            'Ainda faltam avaliacoes marcadas como final fechado. Use /review acao:add tipo:MOVIE romance_fechado:true.',
-          );
+            const embed = buildEmptyEmbed(
+              'Sem filmes com final fechado',
+              'Ainda faltam avaliacoes marcadas como final fechado. Use /review add para avaliar filmes.',
+            );
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }

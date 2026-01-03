@@ -178,7 +178,7 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
       {
         name: `${EMOJI.level} Avaliacoes`,
         value: safeText(
-          '/review acao:<add|remove|view|my|top|favorite> tipo:<GAME|MOVIE>\n- Avaliacoes de jogos e filmes',
+          '/review add|remove|view|my|top|favorite\n- Avaliacoes de jogos e filmes',
           1024,
         ),
       },
