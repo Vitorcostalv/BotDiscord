@@ -5,7 +5,7 @@
 - `/jogo nome:<texto> plataforma:<opcional>` - Ajuda estruturada para um jogo.
 - `/pergunta tipo:<JOGO|FILME|TUTORIAL> pergunta:<texto>` - Perguntas sobre jogos, filmes e tutoriais (tipo opcional).
 - `/review add|remove|view|my|top|favorite` - Avaliacoes de jogos e filmes com ranking e favoritos.
-- `/recomendar acao:<jogo|filme|tutorial>` - Recomendacoes personalizadas baseadas em reviews.
+- `/recomendar acao:<jogo|filme|tutorial> genero:<opcional>` - Recomendacoes personalizadas (se genero vazio, Suzi pergunta).
 - `/register nome_jogador:<texto> nivel:<opcional>` - Registra o perfil do jogador.
 - `/perfil user:<opcional>` - Mostra o perfil do player com paginas.
 - `/roll expressao:<NdM>` - Rolagem de dados (ex: `2d20`).
@@ -115,7 +115,7 @@ Obs: rolagem de dados e sempre local com `crypto.randomInt`.
 
 ## Recomendacoes
 - `/recomendar jogo` usa suas reviews e o ranking do servidor.
-- `/recomendar acao:filme genero:<opcional> romance_fechado:<opcional>` prioriza filmes com final fechado quando solicitado.
+- `/recomendar acao:filme genero:<opcional> romance_fechado:<opcional>` pede genero se faltar e recomenda filmes com final fechado.
 - `/recomendar acao:tutorial` sugere temas com base nas suas tags.
 
 ## Admin (Poe)

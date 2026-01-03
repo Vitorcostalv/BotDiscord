@@ -25,6 +25,16 @@ type AskInput = {
   intentOverride?: LlmIntent;
 };
 
+type AskMessagesInput = {
+  messages: LlmMessage[];
+  intentOverride?: LlmIntent;
+  guildId?: string | null;
+  userId?: string | null;
+  cacheKey?: string;
+  cacheTtlMs?: number;
+  maxOutputTokens?: number;
+};
+
 export type RouterAskResult = {
   text: string;
   provider: LlmProvider;
@@ -424,6 +434,134 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
   return (
     lastError ?? {
       text: buildFallback(t, input.question),
+      provider: getPrimaryProvider(),
+      model: 'fallback',
+      latencyMs: 0,
+      intent,
+      fromCache: false,
+      source: 'fallback',
+    }
+  );
+}
+
+export async function askWithMessages(input: AskMessagesInput): Promise<RouterAskResult> {
+  const t = getTranslator(input.guildId);
+  const intent = input.intentOverride ?? 'recommendation';
+  const cacheKey = input.cacheKey;
+  const cacheTtl = input.cacheTtlMs ?? env.llmCacheTtlMs;
+
+  if (cacheKey) {
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      const age = Date.now() - cached.createdAt;
+      if (age <= cacheTtl) {
+        cacheHits += 1;
+        return {
+          text: cached.text,
+          provider: cached.provider,
+          model: cached.model,
+          latencyMs: 0,
+          intent: cached.intent,
+          fromCache: true,
+          source: 'cache',
+        };
+      }
+      cache.delete(cacheKey);
+    }
+  }
+  cacheMisses += 1;
+
+  const request: LlmRequest = {
+    messages: input.messages,
+    maxOutputTokens: input.maxOutputTokens ?? resolveMaxTokens(intent),
+    timeoutMs: env.llmTimeoutMs,
+  };
+
+  let candidates = pickProviders(intent).filter((candidate) => isProviderEnabled(candidate.provider));
+  if (!candidates.length) {
+    return {
+      text: t('llm.fallback.intro'),
+      provider: getPrimaryProvider(),
+      model: 'fallback',
+      latencyMs: 0,
+      intent,
+      fromCache: false,
+      source: 'fallback',
+    };
+  }
+
+  const available = candidates.filter((candidate) => !isCooldownActive(candidate.provider));
+  if (available.length) {
+    candidates = available;
+  }
+
+  let lastError: RouterAskResult | null = null;
+  for (const candidate of candidates) {
+    const totalLength = input.messages.map((message) => message.content.length).reduce((a, b) => a + b, 0);
+    logInfo('SUZI-LLM-001', 'LLM request', {
+      provider: candidate.provider,
+      model: candidate.model,
+      intent,
+      length: totalLength,
+    });
+
+    const response =
+      candidate.provider === 'gemini'
+        ? await callGemini(request, candidate.model)
+        : await callGroq(request, candidate.model);
+
+    if (response.ok) {
+      if (response.provider === 'gemini') {
+        bumpGeminiUsage({
+          userId: input.userId ?? 'anon',
+          guildId: input.guildId ?? null,
+          delta: 1,
+        });
+      }
+      updateProviderCount(response.provider);
+      if (cacheKey) {
+        cache.set(cacheKey, {
+          text: response.text,
+          provider: response.provider,
+          model: response.model,
+          intent,
+          createdAt: Date.now(),
+        });
+      }
+      return {
+        text: response.text,
+        provider: response.provider,
+        model: response.model,
+        latencyMs: response.latencyMs,
+        intent,
+        fromCache: false,
+        source: 'llm',
+      };
+    }
+
+    if (shouldCooldown(response.errorType, response.status)) {
+      markCooldown(response.provider);
+    }
+
+    lastError = {
+      text: t('llm.fallback.intro'),
+      provider: response.provider,
+      model: response.model,
+      latencyMs: response.latencyMs,
+      intent,
+      fromCache: false,
+      source: 'fallback',
+    };
+    logWarn('SUZI-LLM-001', new Error('LLM falhou'), {
+      provider: response.provider,
+      status: response.status,
+      errorType: response.errorType,
+    });
+  }
+
+  return (
+    lastError ?? {
+      text: t('llm.fallback.intro'),
       provider: getPrimaryProvider(),
       model: 'fallback',
       latencyMs: 0,
