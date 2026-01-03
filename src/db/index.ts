@@ -1,10 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'fs';
-import { dirname, isAbsolute, resolve } from 'path';
+import { dirname, isAbsolute, join, resolve } from 'path';
 
 import Database from 'better-sqlite3';
 
 import { env } from '../config/env.js';
-import { logError, logInfo } from '../utils/logging.js';
+import { logError, logInfo, logWarn } from '../utils/logging.js';
 
 import { migrate } from './migrate.js';
 import { migrateFromJsonIfNeeded } from './migrateFromJson.js';
@@ -16,6 +16,8 @@ let db: DatabaseHandle | null = null;
 let dbReady = false;
 
 const LEGACY_DB_PATH = resolve('./data/suzi.db');
+const DEFAULT_DB_DIR_LINUX = '/app/data';
+const FALLBACK_DB_DIR = '/tmp';
 
 function normalizeDbPath(input: string): string {
   const trimmed = input.trim();
@@ -32,20 +34,62 @@ function normalizeDbPath(input: string): string {
   return isAbsolute(trimmed) ? trimmed : resolve(trimmed);
 }
 
-function ensureDir(filePath: string): void {
+function ensureDir(filePath: string): boolean {
   if (filePath === ':memory:') {
-    return;
+    return true;
   }
   const dir = dirname(filePath);
-  mkdirSync(dir, { recursive: true });
+  try {
+    mkdirSync(dir, { recursive: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveDbDir(): string {
+  const rawDir = env.suziDbDir?.trim();
+  if (rawDir) {
+    return isAbsolute(rawDir) ? rawDir : resolve(rawDir);
+  }
+  if (process.platform === 'win32') {
+    return resolve('./data');
+  }
+  return DEFAULT_DB_DIR_LINUX;
+}
+
+function resolveDbPath(): string {
+  const rawPath = env.dbPath?.trim() || env.databaseUrl?.trim();
+  if (rawPath) {
+    return normalizeDbPath(rawPath);
+  }
+  const baseDir = resolveDbDir();
+  return join(baseDir, 'suzi.db');
 }
 
 export function initDatabase(): void {
   if (dbReady) return;
   try {
-    const dbPath = normalizeDbPath(env.dbPath);
-    const existedBefore = dbPath !== ':memory:' && existsSync(dbPath);
-    ensureDir(dbPath);
+    let dbPath = resolveDbPath();
+    let existedBefore = dbPath !== ':memory:' && existsSync(dbPath);
+    const dirOk = ensureDir(dbPath);
+    if (!dirOk) {
+      const fallbackPath = join(FALLBACK_DB_DIR, 'suzi.db');
+      logWarn('SUZI-DB-001', new Error('DB dir unavailable'), {
+        message: 'DB dir unavailable, using fallback path',
+        requestedPath: dbPath,
+        fallbackPath,
+      });
+      dbPath = fallbackPath;
+      existedBefore = dbPath !== ':memory:' && existsSync(dbPath);
+      ensureDir(dbPath);
+    }
+    if (process.platform === 'linux' && dbPath.startsWith('/app/data') && !existsSync(dbPath)) {
+      logWarn('SUZI-DB-001', new Error('Railway volume not configured'), {
+        message: 'Configure Railway Volume em /app/data',
+        path: dbPath,
+      });
+    }
     if (!existedBefore && dbPath !== ':memory:' && dbPath !== LEGACY_DB_PATH && existsSync(LEGACY_DB_PATH)) {
       copyFileSync(LEGACY_DB_PATH, dbPath);
       logInfo('SUZI-DB-002', 'Migrated local db to persistent volume', {
@@ -53,9 +97,6 @@ export function initDatabase(): void {
         to: dbPath,
       });
     }
-    const existsAfter = dbPath !== ':memory:' && existsSync(dbPath);
-    const fileSize = existsAfter ? statSync(dbPath).size : 0;
-    logInfo('SUZI-DB-001', 'SQLite init', { path: dbPath, existsBefore: existedBefore, existsAfter, fileSize });
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     db.pragma('busy_timeout = 5000');
@@ -63,6 +104,9 @@ export function initDatabase(): void {
     db.pragma('foreign_keys = ON');
     migrate(db);
     migrateFromJsonIfNeeded(db);
+    const existsAfter = dbPath !== ':memory:' && existsSync(dbPath);
+    const fileSize = existsAfter ? statSync(dbPath).size : 0;
+    logInfo('SUZI-DB-001', 'SQLite init', { path: dbPath, existsBefore: existedBefore, existsAfter, fileSize });
     const seeded = seedDefaultReviewsForExistingGuilds(db, env.reviewSeedOwnerId);
     for (const entry of seeded) {
       logInfo('SUZI-DB-SEED-001', 'Default review seeds inserted', {

@@ -5,6 +5,7 @@ import {
   addOrUpdateReview,
   getGuildReviewSummary,
   getMediaStats,
+  getReviewItemSeedSummary,
   getUserReviewCount,
   listTopItems,
   listUserReviews,
@@ -560,11 +561,13 @@ export const reviewCommand = {
         }
 
         const lines = list.map((entry, index) => {
-          const avg = entry.stats.avgStars;
           const totalStars = entry.stats.starsSum;
           const countLabel = entry.stats.count === 1 ? t('review.top.vote_single') : t('review.top.vote_plural');
-          const typeLabel = typeFilter ? '' : ` ${formatType(entry.type, t)}`;
-          return `#${index + 1} ${safeText(entry.name, 40)}${typeLabel} - ${EMOJI_STAR} ${totalStars} (${entry.stats.count} ${countLabel}, ${t('review.fields.avg')} ${avg.toFixed(1)})`;
+          const avgLabel = `${t('review.fields.avg')} ${entry.stats.avgStars.toFixed(1)}`;
+          const seedSummary = getReviewItemSeedSummary(guildId, entry.type, entry.itemKey);
+          const seedLabel = seedSummary.seedOnly ? ` ${t('review.top.seed')}` : '';
+          const typeLabel = `${formatType(entry.type, t)} `;
+          return `#${index + 1} ${typeLabel}${safeText(entry.name, 40)} — ${EMOJI_STAR} ${totalStars} (${entry.stats.count} ${countLabel}, ${avgLabel})${seedLabel}`;
         });
 
         const filterLines = [

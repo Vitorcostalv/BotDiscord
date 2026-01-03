@@ -26,6 +26,8 @@ export type MovieRecommendationResult = {
   seeds: string[];
   hasReviews: boolean;
   seedSource: 'user' | 'system' | 'none';
+  notice?: 'best_effort';
+  fallbackSource?: 'seed' | 'local';
   source: MovieRecommendationSource;
   provider?: LlmProvider;
   model?: string;
@@ -231,6 +233,84 @@ function parseRecommendationEntries(raw: string): { entries: MovieRecommendation
   return { entries: results, parseOk: true };
 }
 
+function parseTitlesFromText(raw: string): string[] {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const titles: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of lines) {
+    const cleaned = line.replace(/^\s*[-*\u2022]?\s*\d*[).:-]?\s*/g, '');
+    const normalized = cleaned.replace(/\u2014|\u2013/g, '-');
+    const split = normalized.split(/\s-\s/);
+    const title = (split[0] ?? normalized).trim();
+    if (!title) continue;
+    const key = title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    titles.push(title);
+    if (titles.length >= 10) break;
+  }
+
+  return titles;
+}
+
+function buildRecommendationsFromTitles(
+  titles: string[],
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  limit: number,
+): MovieRecommendation[] {
+  return titles.slice(0, limit).map((title) => ({
+    title,
+    summary: t('recommend.movie.result.best_effort_summary'),
+    closedEndingConfidence: 'medium',
+    closedEnding: true,
+  }));
+}
+
+function buildRecommendationsFromSeeds(
+  seedReviews: UserReviewItem[],
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  limit: number,
+): MovieRecommendation[] {
+  const ordered = seedReviews
+    .slice()
+    .sort((a, b) => {
+      if (b.review.stars !== a.review.stars) return b.review.stars - a.review.stars;
+      return b.review.updatedAt - a.review.updatedAt;
+    });
+  const results: MovieRecommendation[] = [];
+  for (const entry of ordered) {
+    results.push({
+      title: entry.name,
+      summary: entry.review.opinion?.trim() || t('recommend.movie.result.best_effort_summary'),
+      closedEndingConfidence: 'high',
+      closedEnding: true,
+    });
+    if (results.length >= limit) break;
+  }
+  return results;
+}
+
+function fillRecommendations(
+  base: MovieRecommendation[],
+  fallback: MovieRecommendation[],
+  limit: number,
+): MovieRecommendation[] {
+  const results = base.slice(0, limit);
+  const seen = new Set(results.map((entry) => entry.title.toLowerCase()));
+  for (const entry of fallback) {
+    if (results.length >= limit) break;
+    const key = entry.title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(entry);
+  }
+  return results;
+}
+
 function isRomanceGenre(genre: string): boolean {
   const normalized = genre.toLowerCase();
   return normalized.includes('romance') || normalized.includes('romant') || normalized === 'romcom';
@@ -241,11 +321,32 @@ function resolveErrorReason(response: RouterAskResult): MovieRecommendationResul
   return 'provider_error';
 }
 
-function filterClosedEnding(entries: MovieRecommendation[], limit: number): MovieRecommendation[] {
-  const filtered = entries.filter(
+function selectRecommendations(
+  entries: MovieRecommendation[],
+  limit: number,
+): { items: MovieRecommendation[]; bestEffort: boolean } {
+  const high = entries.filter(
     (entry) => entry.closedEnding === true && entry.closedEndingConfidence === 'high',
   );
-  return filtered.slice(0, limit);
+  if (high.length >= 3) {
+    return { items: high.slice(0, limit), bestEffort: false };
+  }
+
+  const medium = entries.filter(
+    (entry) =>
+      entry.closedEnding === true &&
+      (entry.closedEndingConfidence === 'high' || entry.closedEndingConfidence === 'medium'),
+  );
+  if (medium.length >= 3) {
+    return { items: medium.slice(0, limit), bestEffort: true };
+  }
+
+  const anyClosed = entries.filter((entry) => entry.closedEnding === true);
+  if (anyClosed.length) {
+    return { items: anyClosed.slice(0, limit), bestEffort: true };
+  }
+
+  return { items: [], bestEffort: false };
 }
 
 async function fixJsonWithLlm(
@@ -312,33 +413,62 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
     input.seedReviews ??
     listUserReviews(input.guildId, input.userId, { type: 'MOVIE', order: 'recent', limit: 200 });
   const hasReviews = reviews.length > 0;
-  const systemReviews = hasReviews
-    ? []
-    : listUserReviews(input.guildId, seedOwnerId, { type: 'MOVIE', order: 'recent', limit: 200 });
+  const systemReviews = listUserReviews(input.guildId, seedOwnerId, {
+    type: 'MOVIE',
+    order: 'recent',
+    limit: 200,
+  });
   const seedSource: MovieRecommendationResult['seedSource'] = hasReviews
     ? 'user'
     : systemReviews.length
       ? 'system'
       : 'none';
   const seedReviews = hasReviews ? reviews : systemReviews;
+  const fallbackSeedReviews = systemReviews.length ? systemReviews : seedReviews;
   const seeds = pickMovieSeeds(seedReviews);
   const limit = Math.max(1, input.limit ?? 5);
 
-  if (seedSource === 'none') {
-    const recommendations = LOCAL_FALLBACK_MOVIES.slice(0, limit);
+  const fallbackFromSeeds = (reason: string): MovieRecommendationResult => {
+    const fromSeeds = buildRecommendationsFromSeeds(fallbackSeedReviews, t, limit);
+    const recommendations = fillRecommendations(fromSeeds, LOCAL_FALLBACK_MOVIES, limit);
+    if (recommendations.length) {
+      logInfo('SUZI-RECO-001', 'Movie reco seed fallback', {
+        guildId: input.guildId,
+        userId: input.userId,
+        seedCount: fallbackSeedReviews.length,
+        recommendationsCount: recommendations.length,
+        reason,
+      });
+      return {
+        recommendations,
+        seeds: pickMovieSeeds(fallbackSeedReviews),
+        hasReviews,
+        seedSource,
+        fallbackSource: fromSeeds.length ? 'seed' : 'local',
+        source: 'local',
+      };
+    }
+
+    const localRecommendations = LOCAL_FALLBACK_MOVIES.slice(0, limit);
     logInfo('SUZI-RECO-001', 'Movie reco local fallback', {
       guildId: input.guildId,
       userId: input.userId,
       seedCount: 0,
-      recommendationsCount: recommendations.length,
+      recommendationsCount: localRecommendations.length,
+      reason,
     });
     return {
-      recommendations,
+      recommendations: localRecommendations,
       seeds: [],
       hasReviews: false,
       seedSource: 'none',
+      fallbackSource: 'local',
       source: 'local',
     };
+  };
+
+  if (seedSource === 'none') {
+    return fallbackFromSeeds('seed_source_none');
   }
 
   const wantsRomanceClosed = input.romanceClosed || (normalizedGenre ? isRomanceGenre(normalizedGenre) : false);
@@ -380,16 +510,7 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
       errorType: response.errorType,
       reason: errorReason,
     });
-    return {
-      recommendations: [],
-      seeds,
-      hasReviews,
-      seedSource,
-      source: response.source as MovieRecommendationSource,
-      provider: response.provider,
-      model: response.model,
-      errorReason,
-    };
+    return fallbackFromSeeds(errorReason ?? 'provider_error');
   }
 
   let text = response.text;
@@ -445,21 +566,26 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
   }
 
   if (!parsed.parseOk) {
-    return {
-      recommendations: [],
-      seeds,
-      hasReviews,
-      seedSource,
-      source: response.source as MovieRecommendationSource,
-      provider: response.provider,
-      model: response.model,
-      errorReason: 'json_parse_failed',
-    };
+    const titles = parseTitlesFromText(text);
+    if (titles.length >= 3) {
+      return {
+        recommendations: buildRecommendationsFromTitles(titles, t, limit),
+        seeds,
+        hasReviews,
+        seedSource,
+        notice: 'best_effort',
+        source: response.source as MovieRecommendationSource,
+        provider: response.provider,
+        model: response.model,
+      };
+    }
+    return fallbackFromSeeds('json_parse_failed');
   }
 
   const beforeCount = parsed.entries.length;
-  const filtered = filterClosedEnding(parsed.entries, Math.max(10, limit));
-  const recommendations = filtered.slice(0, limit);
+  const selection = selectRecommendations(parsed.entries, Math.max(10, limit));
+  const recommendations = selection.items.slice(0, limit);
+  const bestEffort = selection.bestEffort;
 
   logInfo('SUZI-RECO-001', 'Movie reco result', {
     guildId: input.guildId,
@@ -471,7 +597,7 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
     rawLength: text.length,
     parseOk: parsed.parseOk,
     recommendationsCount: beforeCount,
-    filteredCount: filtered.length,
+    filteredCount: recommendations.length,
   });
 
   let errorReason: MovieRecommendationResult['errorReason'];
@@ -488,6 +614,7 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
       seedCount,
       reason: errorReason ?? 'filtered_all_closed_ending',
     });
+    return fallbackFromSeeds(errorReason ?? 'filtered_all_closed_ending');
   }
 
   return {
@@ -495,9 +622,9 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
     seeds,
     hasReviews,
     seedSource,
+    notice: bestEffort ? 'best_effort' : undefined,
     source: response.source as MovieRecommendationSource,
     provider: response.provider,
     model: response.model,
-    errorReason: recommendations.length >= 3 ? undefined : errorReason ?? 'filtered_all_closed_ending',
   };
 }

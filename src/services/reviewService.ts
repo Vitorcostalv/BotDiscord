@@ -9,6 +9,7 @@ import {
   deleteReviewItem,
   getReview,
   getReviewItem,
+  getReviewSeedSummary,
   listReviewsByGuild,
   listReviewItems,
   listReviewsByUser,
@@ -497,6 +498,7 @@ function addOrUpdateReviewDb(
   const reviewRow: ReviewRow = {
     guildId,
     userId,
+    createdBy: existingReviewRow?.createdBy ?? null,
     type: payload.type,
     itemKey,
     itemName: name,
@@ -509,6 +511,7 @@ function addOrUpdateReviewDb(
     platform: review.platform,
     createdAt: review.createdAt,
     updatedAt: review.updatedAt,
+    seed: existingReviewRow?.seed ?? false,
   };
 
   upsertReview(reviewRow);
@@ -615,11 +618,11 @@ function listTopItemsDb(guildId: string, filters: ListTopFilters = {}): TopItem[
     if (b.stats.starsSum !== a.stats.starsSum) {
       return b.stats.starsSum - a.stats.starsSum;
     }
-    if (b.stats.avgStars !== a.stats.avgStars) {
-      return b.stats.avgStars - a.stats.avgStars;
-    }
     if (b.stats.count !== a.stats.count) {
       return b.stats.count - a.stats.count;
+    }
+    if (b.stats.avgStars !== a.stats.avgStars) {
+      return b.stats.avgStars - a.stats.avgStars;
     }
     return a.name.localeCompare(b.name);
   });
@@ -963,6 +966,7 @@ export function getMediaStats(guildId: string, type: ReviewMediaType, itemKey: s
 export function listTopItems(guildId: string, filters: ListTopFilters = {}): TopItem[] {
   if (isDbAvailable()) {
     try {
+      seedDefaultReviews(guildId);
       return listTopItemsDb(guildId, filters);
     } catch {
       // fallback to JSON
@@ -999,11 +1003,11 @@ export function listTopItems(guildId: string, filters: ListTopFilters = {}): Top
     if (b.stats.starsSum !== a.stats.starsSum) {
       return b.stats.starsSum - a.stats.starsSum;
     }
-    if (b.stats.avgStars !== a.stats.avgStars) {
-      return b.stats.avgStars - a.stats.avgStars;
-    }
     if (b.stats.count !== a.stats.count) {
       return b.stats.count - a.stats.count;
+    }
+    if (b.stats.avgStars !== a.stats.avgStars) {
+      return b.stats.avgStars - a.stats.avgStars;
     }
     return a.name.localeCompare(b.name);
   });
@@ -1014,6 +1018,7 @@ export function listTopItems(guildId: string, filters: ListTopFilters = {}): Top
 export function getGuildReviewSummary(guildId: string, type?: ReviewMediaType): GuildReviewSummary {
   if (isDbAvailable()) {
     try {
+      seedDefaultReviews(guildId);
       return getGuildReviewSummaryDb(guildId, type);
     } catch {
       // fallback to JSON
@@ -1265,4 +1270,24 @@ export function seedDefaultReviews(guildId: string): number {
     });
   }
   return seededCount;
+}
+
+export function getReviewItemSeedSummary(
+  guildId: string,
+  type: ReviewMediaType,
+  itemKey: string,
+): { seedOnly: boolean; seedCount: number; userCount: number } {
+  if (isDbAvailable()) {
+    try {
+      const summary = getReviewSeedSummary(guildId, type, itemKey);
+      return {
+        seedOnly: summary.userCount === 0 && summary.seedCount > 0,
+        seedCount: summary.seedCount,
+        userCount: summary.userCount,
+      };
+    } catch {
+      // fallback to JSON
+    }
+  }
+  return { seedOnly: false, seedCount: 0, userCount: 0 };
 }

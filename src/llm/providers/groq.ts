@@ -61,11 +61,24 @@ export async function callGroq(request: LlmRequest, model: string): Promise<LlmR
         bodyText = null;
       }
       if (response.status >= 400) {
+        const payloadSummary =
+          response.status === 400
+            ? {
+                model,
+                max_tokens: request.maxOutputTokens,
+                temperature: 0.7,
+                messages: request.messages.map((message) => ({
+                  role: message.role,
+                  length: message.content.length,
+                })),
+              }
+            : undefined;
         logWarn('SUZI-LLM-ERR-002', new Error('Groq request failed'), {
           provider: 'groq',
           model,
           status: response.status,
           body: bodyText ? bodyText.slice(0, 1000) : null,
+          payload: payloadSummary,
         });
       }
       const latencyMs = Date.now() - startedAt;

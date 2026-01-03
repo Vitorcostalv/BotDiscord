@@ -161,6 +161,7 @@ export function migrate(db: Database.Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       guild_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
+      created_by TEXT NULL,
       type TEXT NOT NULL CHECK(type IN ('GAME','MOVIE')),
       item_key TEXT NOT NULL,
       item_name TEXT NOT NULL,
@@ -213,5 +214,6 @@ export function migrate(db: Database.Database): void {
     );
   `);
 
+  addColumnIfMissing(db, 'reviews', 'created_by', 'TEXT NULL');
   addColumnIfMissing(db, 'reviews', 'seed', 'INTEGER NOT NULL DEFAULT 0');
 }

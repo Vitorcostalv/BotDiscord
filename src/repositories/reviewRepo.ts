@@ -8,6 +8,7 @@ export type ReviewMediaType = 'GAME' | 'MOVIE';
 export type ReviewRow = {
   guildId: string;
   userId: string;
+  createdBy?: string | null;
   type: ReviewMediaType;
   itemKey: string;
   itemName: string;
@@ -20,6 +21,7 @@ export type ReviewRow = {
   platform?: string;
   createdAt: number;
   updatedAt: number;
+  seed?: boolean;
 };
 
 export type ReviewItemRow = {
@@ -68,7 +70,7 @@ export function getReview(
   const row = db
     .prepare(
       `SELECT guild_id, user_id, type, item_key, item_name, stars, category, opinion,
-              tags_json, favorite, romance_closed, platform, created_at, updated_at
+              tags_json, favorite, romance_closed, platform, created_at, updated_at, created_by, seed
        FROM reviews
        WHERE guild_id = ? AND user_id = ? AND type = ? AND item_key = ?`,
     )
@@ -88,6 +90,8 @@ export function getReview(
         platform?: string | null;
         created_at: number;
         updated_at: number;
+        created_by?: string | null;
+        seed?: number | null;
       }
     | undefined;
 
@@ -96,6 +100,7 @@ export function getReview(
   return {
     guildId: row.guild_id,
     userId: row.user_id,
+    createdBy: row.created_by ?? null,
     type: row.type,
     itemKey: row.item_key,
     itemName: row.item_name,
@@ -108,6 +113,7 @@ export function getReview(
     platform: row.platform ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    seed: row.seed === 1,
   };
 }
 
@@ -121,7 +127,7 @@ export function listReviewsByUser(
   const rows = db
     .prepare(
       `SELECT guild_id, user_id, type, item_key, item_name, stars, category, opinion,
-              tags_json, favorite, romance_closed, platform, created_at, updated_at
+              tags_json, favorite, romance_closed, platform, created_at, updated_at, created_by, seed
        FROM reviews
        WHERE guild_id = ? AND user_id = ?
        ${type ? 'AND type = ?' : ''}`,
@@ -141,11 +147,14 @@ export function listReviewsByUser(
     platform?: string | null;
     created_at: number;
     updated_at: number;
+    created_by?: string | null;
+    seed?: number | null;
   }>;
 
   return rows.map((row) => ({
     guildId: row.guild_id,
     userId: row.user_id,
+    createdBy: row.created_by ?? null,
     type: row.type,
     itemKey: row.item_key,
     itemName: row.item_name,
@@ -158,6 +167,7 @@ export function listReviewsByUser(
     platform: row.platform ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    seed: row.seed === 1,
   }));
 }
 
@@ -170,7 +180,7 @@ export function listReviewsByGuild(
   const rows = db
     .prepare(
       `SELECT guild_id, user_id, type, item_key, item_name, stars, category, opinion,
-              tags_json, favorite, romance_closed, platform, created_at, updated_at
+              tags_json, favorite, romance_closed, platform, created_at, updated_at, created_by, seed
        FROM reviews
        WHERE guild_id = ?
        ${type ? 'AND type = ?' : ''}`,
@@ -190,11 +200,14 @@ export function listReviewsByGuild(
     platform?: string | null;
     created_at: number;
     updated_at: number;
+    created_by?: string | null;
+    seed?: number | null;
   }>;
 
   return rows.map((row) => ({
     guildId: row.guild_id,
     userId: row.user_id,
+    createdBy: row.created_by ?? null,
     type: row.type,
     itemKey: row.item_key,
     itemName: row.item_name,
@@ -207,6 +220,7 @@ export function listReviewsByGuild(
     platform: row.platform ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    seed: row.seed === 1,
   }));
 }
 
@@ -220,7 +234,7 @@ export function listReviewsForItem(
   const rows = db
     .prepare(
       `SELECT user_id, item_name, stars, category, opinion, tags_json, favorite,
-              romance_closed, platform, created_at, updated_at
+              romance_closed, platform, created_at, updated_at, created_by, seed
        FROM reviews
        WHERE guild_id = ? AND type = ? AND item_key = ?`,
     )
@@ -236,6 +250,8 @@ export function listReviewsForItem(
     platform?: string | null;
     created_at: number;
     updated_at: number;
+    created_by?: string | null;
+    seed?: number | null;
   }>;
 
   return rows.map((row) => ({
@@ -243,6 +259,7 @@ export function listReviewsForItem(
     review: {
       guildId: resolvedGuild,
       userId: row.user_id,
+      createdBy: row.created_by ?? null,
       type,
       itemKey,
       itemName: row.item_name,
@@ -255,6 +272,7 @@ export function listReviewsForItem(
       platform: row.platform ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      seed: row.seed === 1,
     },
   }));
 }
@@ -263,9 +281,9 @@ export function upsertReview(review: ReviewRow): void {
   const db = requireDb();
   db.prepare(
     `INSERT INTO reviews (
-        guild_id, user_id, type, item_key, item_name, stars, category, opinion, tags_json,
-        favorite, romance_closed, platform, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        guild_id, user_id, created_by, type, item_key, item_name, stars, category, opinion, tags_json,
+        favorite, romance_closed, platform, created_at, updated_at, seed
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (guild_id, user_id, type, item_key) DO UPDATE SET
         item_name=excluded.item_name,
         stars=excluded.stars,
@@ -275,10 +293,12 @@ export function upsertReview(review: ReviewRow): void {
         favorite=excluded.favorite,
         romance_closed=excluded.romance_closed,
         platform=excluded.platform,
-        updated_at=excluded.updated_at`,
+        updated_at=excluded.updated_at,
+        seed=excluded.seed`,
   ).run(
     review.guildId,
     review.userId,
+    review.createdBy ?? null,
     review.type,
     review.itemKey,
     review.itemName,
@@ -291,6 +311,7 @@ export function upsertReview(review: ReviewRow): void {
     review.platform ?? null,
     review.createdAt,
     review.updatedAt,
+    review.seed ? 1 : 0,
   );
 }
 
@@ -492,4 +513,27 @@ export function countReviews(
     )
     .get(...(type ? [resolvedGuild, type] : [resolvedGuild])) as { count?: number } | undefined;
   return { totalItems: itemsRow?.count ?? 0, totalReviews: reviewsRow?.count ?? 0 };
+}
+
+export function getReviewSeedSummary(
+  guildId: string | null | undefined,
+  type: ReviewMediaType,
+  itemKey: string,
+): { seedCount: number; userCount: number } {
+  const db = requireDb();
+  const resolvedGuild = resolveGuildId(guildId);
+  const row = db
+    .prepare(
+      `SELECT
+         SUM(CASE WHEN seed = 1 THEN 1 ELSE 0 END) AS seed_count,
+         SUM(CASE WHEN seed = 1 THEN 0 ELSE 1 END) AS user_count
+       FROM reviews
+       WHERE guild_id = ? AND type = ? AND item_key = ?`,
+    )
+    .get(resolvedGuild, type, itemKey) as { seed_count?: number; user_count?: number } | undefined;
+
+  return {
+    seedCount: row?.seed_count ?? 0,
+    userCount: row?.user_count ?? 0,
+  };
 }

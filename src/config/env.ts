@@ -30,8 +30,9 @@ export const env = {
   profileBannerUrl: process.env.PROFILE_BANNER_URL ?? '',
   defaultProfileBannerUrl: process.env.DEFAULT_PROFILE_BANNER_URL ?? '',
   reviewSeedOwnerId: process.env.REVIEW_SEED_OWNER_ID ?? '0',
-  dbPath: process.env.DB_PATH ?? process.env.DATABASE_URL ?? './data/suzi.db',
-  databaseUrl: process.env.DATABASE_URL ?? process.env.DB_PATH ?? './data/suzi.db',
+  suziDbDir: process.env.SUZI_DB_DIR ?? '',
+  dbPath: process.env.DB_PATH ?? '',
+  databaseUrl: process.env.DATABASE_URL ?? '',
   migrateFromJson: process.env.MIGRATE_FROM_JSON === 'true',
 };
 

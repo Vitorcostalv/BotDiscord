@@ -140,9 +140,9 @@ export function seedDefaultReviewsDb(
 
   const insertReview = db.prepare(
     `INSERT OR IGNORE INTO reviews (
-        guild_id, user_id, type, item_key, item_name, stars, category, opinion, tags_json,
+        guild_id, user_id, created_by, type, item_key, item_name, stars, category, opinion, tags_json,
         favorite, romance_closed, platform, created_at, updated_at, seed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const insertItem = db.prepare(
@@ -177,6 +177,7 @@ export function seedDefaultReviewsDb(
       const reviewInfo = insertReview.run(
         guildId,
         ownerId,
+        'SYSTEM',
         seed.type,
         itemKey,
         name,

@@ -288,6 +288,9 @@ export const recomendarCommand = {
             } else {
               lines.push(t('recommend.movie.result.no_seeds'));
             }
+            if (result.notice === 'best_effort') {
+              lines.push(t('recommend.movie.result.best_effort'));
+            }
 
             embed = embed
               .setDescription(lines.join('\n'))
