@@ -47,7 +47,8 @@
 - `LLM_API_KEY` (opcional, stub de LLM legacy)
 - `DEFAULT_PROFILE_BANNER_URL` (opcional, banner padrao no /perfil)
 - `PROFILE_BANNER_URL` (opcional, legado para banner no /perfil)
-- `DATABASE_URL` (opcional, padrao: `./data/suzi.db`)
+- `DB_PATH` (opcional, padrao: `./data/suzi.db`)
+- `DATABASE_URL` (opcional, legado; se definido e DB_PATH vazio, sera usado)
 - `MIGRATE_FROM_JSON` (opcional, `true` força migracao dos JSON para SQLite)
 
 Notas:
@@ -56,7 +57,8 @@ Notas:
 
 ## Banco de Dados (SQLite)
 - O bot usa SQLite local por padrao (`./data/suzi.db`).
-- Para alterar o caminho, defina `DATABASE_URL`.
+- Para alterar o caminho, defina `DB_PATH` (ou `DATABASE_URL` legado).
+- Em producao (Railway), configure um volume persistente e use `DB_PATH=/data/suzi.db`.
 - Para migrar dados legados em JSON, use `MIGRATE_FROM_JSON=true` na primeira inicializacao.
 - A migracao cria as tabelas automaticamente e registra o total de itens migrados nos logs.
 

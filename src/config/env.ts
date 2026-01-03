@@ -29,7 +29,8 @@ export const env = {
   steamApiKey: process.env.STEAM_API_KEY ?? '',
   profileBannerUrl: process.env.PROFILE_BANNER_URL ?? '',
   defaultProfileBannerUrl: process.env.DEFAULT_PROFILE_BANNER_URL ?? '',
-  databaseUrl: process.env.DATABASE_URL ?? './data/suzi.db',
+  dbPath: process.env.DB_PATH ?? process.env.DATABASE_URL ?? './data/suzi.db',
+  databaseUrl: process.env.DATABASE_URL ?? process.env.DB_PATH ?? './data/suzi.db',
   migrateFromJson: process.env.MIGRATE_FROM_JSON === 'true',
 };
 
