@@ -200,10 +200,6 @@ export function buildHelpEmbed(t: Translator, botUser?: User | null): EmbedBuild
         value: safeText(t('help.section.reviews.value'), 1024),
       },
       {
-        name: `${EMOJI.bolt} ${t('help.section.recommendations.name')}`,
-        value: safeText(t('help.section.recommendations.value'), 1024),
-      },
-      {
         name: `${EMOJI.dice} ${t('help.section.rpg.name')}`,
         value: safeText(t('help.section.rpg.value'), 1024),
       },
