@@ -1,5 +1,20 @@
 import type Database from 'better-sqlite3';
 
+function hasColumn(db: Database.Database, table: string, column: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>;
+  return rows.some((row) => row.name === column);
+}
+
+function addColumnIfMissing(
+  db: Database.Database,
+  table: string,
+  column: string,
+  definition: string,
+): void {
+  if (hasColumn(db, table, column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
 export function migrate(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -158,6 +173,7 @@ export function migrate(db: Database.Database): void {
       platform TEXT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
+      seed INTEGER NOT NULL DEFAULT 0,
       UNIQUE (guild_id, user_id, type, item_key)
     );
 
@@ -196,4 +212,6 @@ export function migrate(db: Database.Database): void {
       updated_by TEXT NOT NULL
     );
   `);
+
+  addColumnIfMissing(db, 'reviews', 'seed', 'INTEGER NOT NULL DEFAULT 0');
 }

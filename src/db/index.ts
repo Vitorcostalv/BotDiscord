@@ -8,6 +8,7 @@ import { logError, logInfo } from '../utils/logging.js';
 
 import { migrate } from './migrate.js';
 import { migrateFromJsonIfNeeded } from './migrateFromJson.js';
+import { seedDefaultReviewsForExistingGuilds } from './reviewSeed.js';
 
 type DatabaseHandle = Database.Database;
 
@@ -62,6 +63,13 @@ export function initDatabase(): void {
     db.pragma('foreign_keys = ON');
     migrate(db);
     migrateFromJsonIfNeeded(db);
+    const seeded = seedDefaultReviewsForExistingGuilds(db, env.reviewSeedOwnerId);
+    for (const entry of seeded) {
+      logInfo('SUZI-DB-SEED-001', 'Default review seeds inserted', {
+        guildId: entry.guildId,
+        seededCount: entry.seededCount,
+      });
+    }
     dbReady = true;
     logInfo('SUZI-DB-001', 'SQLite pronto', { path: dbPath });
   } catch (error) {

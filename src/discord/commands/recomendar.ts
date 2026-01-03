@@ -281,7 +281,7 @@ export const recomendarCommand = {
             if (genreValue.trim()) {
               lines.push(t('recommend.movie.result.genre', { genre: genreLabel }));
             }
-            if (result.seeds.length) {
+            if (result.seedSource === 'user' && result.seeds.length) {
               lines.push(t('recommend.movie.result.seeds', { seeds: safeText(result.seeds.join(', '), 200) }));
             } else if (!result.hasReviews) {
               lines.push(t('recommend.movie.result.no_reviews'));

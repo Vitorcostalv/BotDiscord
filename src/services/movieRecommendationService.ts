@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { getTranslator } from '../i18n/index.js';
 import { callGemini } from '../llm/providers/gemini.js';
 import { callGroq } from '../llm/providers/groq.js';
@@ -6,7 +7,7 @@ import type { LlmProvider, LlmRequest } from '../llm/types.js';
 import { parseLLMJsonSafe } from '../utils/llmJson.js';
 import { logInfo, logWarn } from '../utils/logging.js';
 
-import { listUserReviews, type UserReviewItem } from './reviewService.js';
+import { listUserReviews, seedDefaultReviews, type UserReviewItem } from './reviewService.js';
 
 export type MovieRecommendation = {
   title: string;
@@ -24,6 +25,7 @@ export type MovieRecommendationResult = {
   recommendations: MovieRecommendation[];
   seeds: string[];
   hasReviews: boolean;
+  seedSource: 'user' | 'system' | 'none';
   source: MovieRecommendationSource;
   provider?: LlmProvider;
   model?: string;
@@ -304,14 +306,25 @@ async function fixJsonWithLlm(
 export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): Promise<MovieRecommendationResult> {
   const t = getTranslator(input.guildId);
   const normalizedGenre = normalizeGenre(input.genre);
+  seedDefaultReviews(input.guildId);
+  const seedOwnerId = env.reviewSeedOwnerId?.trim() || '0';
   const reviews =
     input.seedReviews ??
     listUserReviews(input.guildId, input.userId, { type: 'MOVIE', order: 'recent', limit: 200 });
   const hasReviews = reviews.length > 0;
-  const seeds = pickMovieSeeds(reviews);
+  const systemReviews = hasReviews
+    ? []
+    : listUserReviews(input.guildId, seedOwnerId, { type: 'MOVIE', order: 'recent', limit: 200 });
+  const seedSource: MovieRecommendationResult['seedSource'] = hasReviews
+    ? 'user'
+    : systemReviews.length
+      ? 'system'
+      : 'none';
+  const seedReviews = hasReviews ? reviews : systemReviews;
+  const seeds = pickMovieSeeds(seedReviews);
   const limit = Math.max(1, input.limit ?? 5);
 
-  if (!hasReviews) {
+  if (seedSource === 'none') {
     const recommendations = LOCAL_FALLBACK_MOVIES.slice(0, limit);
     logInfo('SUZI-RECO-001', 'Movie reco local fallback', {
       guildId: input.guildId,
@@ -323,6 +336,7 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
       recommendations,
       seeds: [],
       hasReviews: false,
+      seedSource: 'none',
       source: 'local',
     };
   }
@@ -370,6 +384,7 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
       recommendations: [],
       seeds,
       hasReviews,
+      seedSource,
       source: response.source as MovieRecommendationSource,
       provider: response.provider,
       model: response.model,
@@ -434,6 +449,7 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
       recommendations: [],
       seeds,
       hasReviews,
+      seedSource,
       source: response.source as MovieRecommendationSource,
       provider: response.provider,
       model: response.model,
@@ -478,6 +494,7 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
     recommendations,
     seeds,
     hasReviews,
+    seedSource,
     source: response.source as MovieRecommendationSource,
     provider: response.provider,
     model: response.model,

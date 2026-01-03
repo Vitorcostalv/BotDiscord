@@ -1,6 +1,8 @@
 import { join } from 'path';
 
-import { isDbAvailable } from '../db/index.js';
+import { env } from '../config/env.js';
+import { getDb, isDbAvailable } from '../db/index.js';
+import { seedDefaultReviewsDb } from '../db/reviewSeed.js';
 import {
   countReviews,
   deleteReview,
@@ -16,6 +18,7 @@ import {
   type ReviewItemRow,
   type ReviewRow,
 } from '../repositories/reviewRepo.js';
+import { logInfo } from '../utils/logging.js';
 
 import { readJsonFile, writeJsonAtomic } from './jsonStore.js';
 
@@ -1247,4 +1250,19 @@ export function listItemsByTags(
   });
 
   return result;
+}
+
+export function seedDefaultReviews(guildId: string): number {
+  if (!isDbAvailable()) return 0;
+  const db = getDb();
+  if (!db) return 0;
+  const ownerId = env.reviewSeedOwnerId?.trim() || '0';
+  const seededCount = seedDefaultReviewsDb(db, guildId, ownerId);
+  if (seededCount > 0) {
+    logInfo('SUZI-DB-SEED-001', 'Default review seeds inserted', {
+      guildId,
+      seededCount,
+    });
+  }
+  return seededCount;
 }
