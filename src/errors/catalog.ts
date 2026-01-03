@@ -100,6 +100,13 @@ export const ERROR_CATALOG: ErrorCatalogEntry[] = [
     fix: ['Tente novamente', 'Aumente timeout se necessario.'],
   },
   {
+    code: 'SUZI-LLM-ERR-002',
+    title: 'Groq request invalida (400+)',
+    symptoms: ['Erro 400/422 no Groq', 'Respostas LLM falham'],
+    cause: 'Payload invalido ou modelo sem suporte.',
+    fix: ['Revise model/params enviados', 'Teste com modelo valido e sem campos extras.'],
+  },
+  {
     code: 'SUZI-DEPLOY-001',
     title: 'Service esperando porta HTTP',
     symptoms: ['Render acusa port scan timeout'],

@@ -4,6 +4,8 @@ import type { LlmMessage, LlmRequest, LlmResponse } from '../types.js';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 const MIN_API_KEY_LENGTH = 30;
+const GEMINI_COOLDOWN_MS = 10 * 60 * 1000;
+let geminiDisabledUntil = 0;
 
 type GeminiResponse = {
   candidates?: Array<{
@@ -60,10 +62,28 @@ export function isGeminiEnabled(): boolean {
   return Boolean(env.geminiApiKey && env.geminiApiKey.trim().length >= MIN_API_KEY_LENGTH);
 }
 
+export function isGeminiAvailable(): boolean {
+  return isGeminiEnabled() && Date.now() >= geminiDisabledUntil;
+}
+
+export function getGeminiCooldownRemainingMs(): number {
+  return Math.max(0, geminiDisabledUntil - Date.now());
+}
+
 export async function callGemini(request: LlmRequest, modelOverride?: string): Promise<LlmResponse> {
   const apiKey = env.geminiApiKey?.trim();
   const model = modelOverride?.trim() || env.geminiModel || DEFAULT_MODEL;
   const startedAt = Date.now();
+
+  if (Date.now() < geminiDisabledUntil) {
+    return {
+      ok: false,
+      provider: 'gemini',
+      model,
+      latencyMs: Date.now() - startedAt,
+      errorType: 'rate_limit',
+    };
+  }
 
   if (!apiKey || apiKey.length < MIN_API_KEY_LENGTH) {
     return {
@@ -101,6 +121,7 @@ export async function callGemini(request: LlmRequest, modelOverride?: string): P
     if (!response.ok) {
       const latencyMs = Date.now() - startedAt;
       if (response.status === 429) {
+        geminiDisabledUntil = Date.now() + GEMINI_COOLDOWN_MS;
         return { ok: false, provider: 'gemini', model, latencyMs, errorType: 'rate_limit', status: response.status };
       }
       if (response.status === 401 || response.status === 403) {

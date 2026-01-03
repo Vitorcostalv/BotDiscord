@@ -50,11 +50,24 @@ export async function callGroq(request: LlmRequest, model: string): Promise<LlmR
         })),
         max_tokens: request.maxOutputTokens,
         temperature: 0.7,
-        response_format: request.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       }),
     });
 
     if (!response.ok) {
+      let bodyText: string | null = null;
+      try {
+        bodyText = await response.text();
+      } catch {
+        bodyText = null;
+      }
+      if (response.status >= 400) {
+        logWarn('SUZI-LLM-ERR-002', new Error('Groq request failed'), {
+          provider: 'groq',
+          model,
+          status: response.status,
+          body: bodyText ? bodyText.slice(0, 1000) : null,
+        });
+      }
       const latencyMs = Date.now() - startedAt;
       if (response.status === 429) {
         return { ok: false, provider: 'groq', model, latencyMs, errorType: 'rate_limit', status: response.status };

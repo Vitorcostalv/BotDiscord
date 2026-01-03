@@ -8,7 +8,7 @@ import type { PlayerProfile } from '../services/profileService.js';
 import type { QuestionType } from '../services/storage.js';
 import { logInfo, logWarn } from '../utils/logging.js';
 
-import { callGemini, isGeminiEnabled } from './providers/gemini.js';
+import { callGemini, isGeminiAvailable } from './providers/gemini.js';
 import { callGroq, isGroqEnabled } from './providers/groq.js';
 import { callPoe, isPoeAvailable, resolvePoeModel } from './providers/poe.js';
 import type { LlmIntent, LlmMessage, LlmProvider, LlmRequest } from './types.js';
@@ -299,7 +299,7 @@ function buildRequest(
 }
 
 function isProviderEnabled(provider: LlmProvider): boolean {
-  if (provider === 'gemini') return isGeminiEnabled();
+  if (provider === 'gemini') return isGeminiAvailable();
   if (provider === 'groq') return isGroqEnabled();
   return isPoeAvailable();
 }

@@ -9,6 +9,7 @@ import {
 } from 'discord.js';
 
 import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
+import { getGeminiCooldownRemainingMs } from '../../llm/providers/gemini.js';
 import { recommendMoviesClosedEnding } from '../../services/movieRecommendationService.js';
 import {
   getGuildReviewSummary,
@@ -236,7 +237,7 @@ export const recomendarCommand = {
           let embed = createSuziEmbed('primary').setTitle(`${EMOJI_MOVIE} ${t('recommend.movie.result.title')}`);
           if (result.recommendations.length < 3) {
             const reason = result.errorReason ?? 'filtered_all_closed_ending';
-            const errorId = reason === 'json_parse_failed' ? buildErrorId() : null;
+            const errorId = buildErrorId();
             const errorMap: Record<string, { title: string; desc: string }> = {
               json_parse_failed: {
                 title: t('recommend.movie.result.parse_failed.title'),
@@ -254,20 +255,29 @@ export const recomendarCommand = {
                 title: t('recommend.movie.result.provider_error.title'),
                 desc: t('recommend.movie.result.provider_error.desc'),
               },
+              no_candidates: {
+                title: t('recommend.movie.result.no_candidates.title'),
+                desc: t('recommend.movie.result.no_candidates.desc'),
+              },
             };
             const fallback = errorMap.filtered_all_closed_ending;
             const message = errorMap[reason] ?? fallback;
             embed = buildEmptyEmbed(message.title, message.desc);
-            if (errorId) {
-              embed.setFooter({ text: t('recommend.movie.result.error_id', { id: errorId }) });
-              logError('SUZI-CMD-002', new Error('Movie reco parse failed'), {
-                guildId,
-                userId: interaction.user.id,
-                errorId,
-              });
-            }
+            embed.setFooter({ text: t('recommend.movie.result.error_id', { id: errorId }) });
+            logError('SUZI-CMD-002', new Error('Movie reco failed'), {
+              guildId,
+              userId: interaction.user.id,
+              errorId,
+              reason,
+              provider: result.provider,
+              model: result.model,
+            });
           } else {
             const lines: string[] = [];
+            const geminiCooldownMs = getGeminiCooldownRemainingMs();
+            if (geminiCooldownMs > 0 && result.provider === 'groq') {
+              lines.push(t('recommend.movie.result.cooldown_gemini'));
+            }
             if (genreValue.trim()) {
               lines.push(t('recommend.movie.result.genre', { genre: genreLabel }));
             }
@@ -292,6 +302,11 @@ export const recomendarCommand = {
             await safeRespond(interaction, payload);
           }
         };
+
+        if (!generoInput && !hasMovieReviews) {
+          await handleMovieRecommendations('');
+          return;
+        }
 
         if (!generoInput) {
           const embed = createSuziEmbed('primary')
