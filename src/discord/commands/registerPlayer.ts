@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { trackEvent } from '../../achievements/service.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { hasRegisterPermission } from '../../services/permissionService.js';
 import { getPlayerProfile, upsertPlayerProfile } from '../../services/profileService.js';
@@ -22,27 +23,45 @@ const EMOJI_SPARKLE = '\u2728';
 export const registerPlayerCommand = {
   data: new SlashCommandBuilder()
     .setName('register')
-    .setDescription('Registre seu perfil na Suzi')
+    .setDescription(tLang('en', 'register.command.desc'))
+    .setDescriptionLocalizations(getLocalized('register.command.desc'))
     .addStringOption((option) =>
-      option.setName('nome_jogador').setDescription('Nome do jogador').setRequired(true),
+      option
+        .setName('nome_jogador')
+        .setDescription(tLang('en', 'register.option.name'))
+        .setDescriptionLocalizations(getLocalized('register.option.name'))
+        .setRequired(true),
     )
     .addIntegerOption((option) =>
       option
         .setName('nivel')
-        .setDescription('Nivel do usuario (1 a 99)')
+        .setDescription(tLang('en', 'register.option.level'))
+        .setDescriptionLocalizations(getLocalized('register.option.level'))
         .setRequired(false)
         .setMinValue(1)
         .setMaxValue(99),
     )
-    .addUserOption((option) => option.setName('user').setDescription('Usuario alvo').setRequired(false))
+    .addUserOption((option) =>
+      option
+        .setName('user')
+        .setDescription(tLang('en', 'register.option.user'))
+        .setDescriptionLocalizations(getLocalized('register.option.user'))
+        .setRequired(false),
+    )
     .addBooleanOption((option) =>
-      option.setName('force').setDescription('Sobrescreve registro existente').setRequired(false),
+      option
+        .setName('force')
+        .setDescription(tLang('en', 'register.option.force'))
+        .setDescriptionLocalizations(getLocalized('register.option.force'))
+        .setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
       return;
     }
+
+    const t = getTranslator(interaction.guildId);
 
     try {
       const targetUser = interaction.options.getUser('user') ?? interaction.user;
@@ -51,16 +70,16 @@ export const registerPlayerCommand = {
 
       if (!isSelf && !hasRegisterPermission(interaction)) {
         const embed = createSuziEmbed('warning')
-          .setTitle(`${EMOJI_WARNING} Permissao insuficiente`)
-          .setDescription('Voce precisa de Manage Guild ou do cargo mestre para registrar outra pessoa.')
-          .setFooter({ text: 'Suzi - Registro de Player' });
+          .setTitle(`${EMOJI_WARNING} ${t('register.permission.title')}`)
+          .setDescription(t('register.permission.desc'))
+          .setFooter({ text: t('register.permission.footer') });
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
 
       const existing = getPlayerProfile(targetUser.id, interaction.guildId ?? null);
       if (existing && !force) {
-        const embed = buildRegisterWarningEmbed(targetUser);
+        const embed = buildRegisterWarningEmbed(t, targetUser);
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
@@ -74,25 +93,32 @@ export const registerPlayerCommand = {
         interaction.user.id,
         interaction.guildId ?? null,
       );
-      appendProfileHistory(targetUser.id, {
-        type: 'register',
-        label: `Registro atualizado por <@${interaction.user.id}> para <@${targetUser.id}>`,
-      }, interaction.guildId ?? null);
+      appendProfileHistory(
+        targetUser.id,
+        {
+          type: 'register',
+          label: t('register.history', { actor: `<@${interaction.user.id}>`, target: `<@${targetUser.id}>` }),
+        },
+        interaction.guildId ?? null,
+      );
 
-      const embed = buildRegisterSuccessEmbed(targetUser, profile);
+      const embed = buildRegisterSuccessEmbed(t, targetUser, profile);
       await safeRespond(interaction, { embeds: [embed] });
 
       if (isSelf) {
         const xpResult = awardXp(targetUser.id, 10, { reason: 'register' }, interaction.guildId ?? null);
         if (xpResult.leveledUp) {
-          await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
+          await safeRespond(
+            interaction,
+            t('register.level_up', { emoji: EMOJI_SPARKLE, level: xpResult.newLevel }),
+          );
         }
       }
 
       try {
         const { unlocked } = trackEvent(targetUser.id, 'register');
         unlockTitlesFromAchievements(targetUser.id, unlocked);
-        const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+        const unlockEmbed = buildAchievementUnlockEmbed(t, unlocked);
         if (unlockEmbed) {
           await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
@@ -102,8 +128,8 @@ export const registerPlayerCommand = {
     } catch (error) {
       logError('SUZI-CMD-002', error, { message: 'Erro no comando /register' });
       const embed = createSuziEmbed('warning')
-        .setTitle('Nao consegui registrar agora')
-        .setDescription(toPublicMessage('SUZI-CMD-002'));
+        .setTitle(t('register.error.title'))
+        .setDescription(toPublicMessage('SUZI-CMD-002', interaction.guildId));
       await safeRespond(interaction, { embeds: [embed] });
     }
   },

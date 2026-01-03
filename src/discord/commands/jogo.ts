@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { trackEvent } from '../../achievements/service.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { ask } from '../../llm/router.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro, getPlayerProfile } from '../../services/profileService.js';
@@ -25,16 +26,29 @@ function withLeadingEmoji(text: string, emoji: string): string {
 export const jogoCommand = {
   data: new SlashCommandBuilder()
     .setName('jogo')
-    .setDescription('Receba ajuda rapida sobre um jogo')
-    .addStringOption((option) => option.setName('nome').setDescription('Nome do jogo').setRequired(true))
+    .setDescription(tLang('en', 'game.command.desc'))
+    .setDescriptionLocalizations(getLocalized('game.command.desc'))
     .addStringOption((option) =>
-      option.setName('plataforma').setDescription('Plataforma (ex: PC, PS5, Switch)').setRequired(false),
+      option
+        .setName('nome')
+        .setDescription(tLang('en', 'game.option.name'))
+        .setDescriptionLocalizations(getLocalized('game.option.name'))
+        .setRequired(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('plataforma')
+        .setDescription(tLang('en', 'game.option.platform'))
+        .setDescriptionLocalizations(getLocalized('game.option.platform'))
+        .setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
       return;
     }
+
+    const t = getTranslator(interaction.guildId);
 
     await withCooldown(interaction, 'jogo', async () => {
       const userId = interaction.user.id;
@@ -43,12 +57,12 @@ export const jogoCommand = {
       const prefs = getPreferences(userId);
       const userProfile = getPlayerProfile(userId, interaction.guildId ?? null);
 
-      const question = [
-        `Quero dicas rapidas para o jogo ${gameName}.`,
-        `Plataforma: ${platform ?? prefs.plataforma ?? 'nao informada'}.`,
-        `Preferencias: plataforma ${prefs.plataforma ?? 'n/d'}, genero ${prefs.genero ?? 'n/d'}.`,
-        'Responda com visao geral, dicas iniciais, erros comuns e afinidade.',
-      ].join(' ');
+      const question = t('game.prompt', {
+        game: gameName,
+        platform: platform ?? prefs.plataforma ?? t('game.prompt.platform_unknown'),
+        prefPlatform: prefs.plataforma ?? t('game.prompt.unknown'),
+        prefGenre: prefs.genero ?? t('game.prompt.unknown'),
+      });
 
       try {
         const result = await ask({
@@ -61,15 +75,23 @@ export const jogoCommand = {
           intentOverride: 'tutorial',
         });
         const response = result.text;
-        appendProfileHistory(userId, {
-          type: 'jogo',
-          label: platform ? `${gameName} (${platform})` : gameName,
-        }, interaction.guildId ?? null);
+        appendProfileHistory(
+          userId,
+          {
+            type: 'jogo',
+            label: platform ? `${gameName} (${platform})` : gameName,
+          },
+          interaction.guildId ?? null,
+        );
 
-        const intro = formatSuziIntro(userId, {
-          displayName: interaction.user.globalName ?? interaction.user.username,
-          kind: 'jogo',
-        }, interaction.guildId ?? null);
+        const intro = formatSuziIntro(
+          userId,
+          {
+            displayName: interaction.user.globalName ?? interaction.user.username,
+            kind: 'jogo',
+          },
+          interaction.guildId ?? null,
+        );
 
         const content = intro
           ? `${intro}\n\n${withLeadingEmoji(response, EMOJI_GAME)}`
@@ -78,13 +100,16 @@ export const jogoCommand = {
 
         const xpResult = awardXp(userId, 5, { reason: 'jogo', cooldownSeconds: 10 }, interaction.guildId ?? null);
         if (xpResult.leveledUp) {
-          await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
+          await safeRespond(
+            interaction,
+            t('game.level_up', { emoji: EMOJI_SPARKLE, level: xpResult.newLevel }),
+          );
         }
 
         try {
           const { unlocked } = trackEvent(userId, 'jogo');
           unlockTitlesFromAchievements(userId, unlocked);
-          const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+          const unlockEmbed = buildAchievementUnlockEmbed(t, unlocked);
           if (unlockEmbed) {
             await safeRespond(interaction, { embeds: [unlockEmbed] });
           }
@@ -93,7 +118,7 @@ export const jogoCommand = {
         }
       } catch (error) {
         logError('SUZI-CMD-002', error, { message: 'Erro no comando /jogo' });
-        await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
+        await safeRespond(interaction, toPublicMessage('SUZI-CMD-002', interaction.guildId));
       }
     });
   },

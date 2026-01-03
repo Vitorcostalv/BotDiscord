@@ -12,8 +12,21 @@ import {
   measureParagraph,
 } from './canvasUtils.js';
 
+type SobreCardStrings = {
+  title: string;
+  subtitle: string;
+  lore: string;
+  tagline: string;
+  curiositiesTitle: string;
+  curiosities: string[];
+  quote: string;
+  signature: string;
+};
+
 type SobreCardInput = {
   suziImageUrl?: string | null;
+  locale: string;
+  strings: SobreCardStrings;
 };
 
 type CardCacheEntry = {
@@ -38,8 +51,9 @@ function truncateUrl(url: string, maxLen = 80): string {
   return `${clean.slice(0, Math.max(0, maxLen - 3))}...`;
 }
 
-function cacheKey(url?: string | null): string {
-  return url?.trim() || 'default';
+function cacheKey(url?: string | null, locale?: string): string {
+  const key = url?.trim() || 'default';
+  return `${locale ?? 'default'}:${key}`;
 }
 
 function getCachedCard(key: string): Buffer | null {
@@ -89,14 +103,14 @@ function drawParticles(ctx: SKRSContext2D, count: number, height: number): void 
   }
 }
 
-function drawHeader(ctx: SKRSContext2D): void {
+function drawHeader(ctx: SKRSContext2D, strings: SobreCardStrings): void {
   ctx.fillStyle = COLOR_TEXT;
   ctx.font = canvasTheme.font.title;
-  ctx.fillText('🌙 Sobre a Suzi', 60, 90);
+  ctx.fillText(strings.title, 60, 90);
 
   ctx.fillStyle = COLOR_MUTED;
   ctx.font = canvasTheme.font.subtitle;
-  ctx.fillText('Oraculo gamer • entre o dado e o destino', 62, 124);
+  ctx.fillText(strings.subtitle, 62, 124);
 }
 
 function drawSuziArt(ctx: SKRSContext2D, image: Image | null): void {
@@ -139,7 +153,7 @@ function drawSuziArt(ctx: SKRSContext2D, image: Image | null): void {
   ctx.restore();
 }
 
-function drawTextCard(ctx: SKRSContext2D): { height: number } {
+function drawTextCard(ctx: SKRSContext2D, strings: SobreCardStrings): { height: number } {
   const cardX = 60;
   const cardY = 150;
   const cardW = 700;
@@ -147,15 +161,10 @@ function drawTextCard(ctx: SKRSContext2D): { height: number } {
   const lineHeight = canvasTheme.lineHeightBase;
   const gap = canvasTheme.gapMd;
 
-  const lore =
-    'Ninguem sabe exatamente quando Suzi apareceu. Alguns dizem que foi depois de uma rolagem impossivel; outros, quando alguem fez a pergunta certa.';
-  const tagline = 'Ela vive nos intervalos: entre o dado e o resultado, entre a duvida e a resposta.';
-  const bullets = [
-    '🎲 Carinho por resultados improvaveis',
-    '🧠 Curte perguntas certeiras',
-    '🌌 O acaso nunca e so acaso',
-  ];
-  const quote = '“Nem todo resultado e sorte. Alguns so estavam esperando.”';
+  const lore = strings.lore;
+  const tagline = strings.tagline;
+  const bullets = strings.curiosities;
+  const quote = strings.quote;
 
   const drawContent = ({ mode, x, y, width }: { mode: 'measure' | 'draw'; x: number; y: number; width: number }) => {
     let cursorY = Math.round(y);
@@ -177,7 +186,7 @@ function drawTextCard(ctx: SKRSContext2D): { height: number } {
     ctx.font = canvasTheme.font.section;
     if (mode === 'draw') {
       ctx.fillStyle = COLOR_ACCENT;
-      ctx.fillText('✨ Curiosidades', x, cursorY);
+      ctx.fillText(strings.curiositiesTitle, x, cursorY);
     }
     cursorY += Math.round(lineHeight);
     cursorY += gap;
@@ -243,21 +252,21 @@ function drawTextCard(ctx: SKRSContext2D): { height: number } {
   return { height: card.height };
 }
 
-function drawSignature(ctx: SKRSContext2D, height: number): void {
+function drawSignature(ctx: SKRSContext2D, height: number, strings: SobreCardStrings): void {
   ctx.fillStyle = COLOR_MUTED;
   ctx.font = canvasTheme.font.small;
-  ctx.fillText('Suzi • Oraculo gamer', 60, height - 26);
+  ctx.fillText(strings.signature, 60, height - 26);
 }
 
 export async function renderSobreCard(input: SobreCardInput): Promise<Buffer> {
-  const key = cacheKey(input.suziImageUrl);
+  const key = cacheKey(input.suziImageUrl, input.locale);
   const cached = getCachedCard(key);
   if (cached) return cached;
 
   const { createCanvas, loadImage } = await import('@napi-rs/canvas');
   const measureCanvas = createCanvas(10, 10);
   const measureCtx = measureCanvas.getContext('2d');
-  const measured = drawTextCard(measureCtx);
+  const measured = drawTextCard(measureCtx, input.strings);
   const desiredHeight = Math.max(CANVAS_HEIGHT, 150 + measured.height + 80);
 
   const canvas = createCanvas(CANVAS_WIDTH, desiredHeight);
@@ -286,10 +295,10 @@ export async function renderSobreCard(input: SobreCardInput): Promise<Buffer> {
     }
   }
 
-  drawHeader(ctx);
-  const textCard = drawTextCard(ctx);
+  drawHeader(ctx, input.strings);
+  const textCard = drawTextCard(ctx, input.strings);
   drawSuziArt(ctx, suziImage);
-  drawSignature(ctx, Math.max(desiredHeight, 150 + textCard.height + 60));
+  drawSignature(ctx, Math.max(desiredHeight, 150 + textCard.height + 60), input.strings);
 
   const buffer = canvas.toBuffer('image/png');
   setCachedCard(key, buffer);

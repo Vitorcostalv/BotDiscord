@@ -7,6 +7,7 @@ import { ajudaCommand } from './ajuda.js';
 import { conquistasCommand } from './conquistas.js';
 import { historicoCommand } from './historico.js';
 import { jogoCommand } from './jogo.js';
+import { languageCommand } from './language.js';
 import { nivelCommand } from './nivel.js';
 import { perfilCommand } from './perfil.js';
 import { perguntaCommand } from './pergunta.js';
@@ -29,6 +30,7 @@ const commands = [
   ajudaCommand.data,
   rollCommand.data,
   historicoCommand.data,
+  languageCommand.data,
   statusCommand.data,
   steamCommand.data,
   registerPlayerCommand.data,

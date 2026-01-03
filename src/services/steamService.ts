@@ -31,6 +31,15 @@ export type SteamSummary = {
   gameserverip?: string;
 };
 
+export type SteamPersonaState =
+  | 'offline'
+  | 'online'
+  | 'busy'
+  | 'away'
+  | 'snooze'
+  | 'trade'
+  | 'play';
+
 type SteamStore = {
   links: Record<string, SteamLink>;
   cache: Record<string, SteamSummary>;
@@ -60,22 +69,22 @@ export function validateSteamId64(id: string): boolean {
   return /^[0-9]{17}$/.test(id);
 }
 
-export function mapPersonaState(personastate: number): string {
+export function mapPersonaState(personastate: number): SteamPersonaState {
   switch (personastate) {
     case 1:
-      return 'Online';
+      return 'online';
     case 2:
-      return 'Ocupado';
+      return 'busy';
     case 3:
-      return 'Ausente';
+      return 'away';
     case 4:
-      return 'Soneca';
+      return 'snooze';
     case 5:
-      return 'Quer negociar';
+      return 'trade';
     case 6:
-      return 'Quer jogar';
+      return 'play';
     default:
-      return 'Offline';
+      return 'offline';
   }
 }
 

@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, PermissionFlagsBits, SlashCommandBuilder }
 
 import { trackEvent } from '../../achievements/service.js';
 import { env } from '../../config/env.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { getPlayerProfile, updatePlayerLevel } from '../../services/profileService.js';
 import { unlockTitlesFromAchievements } from '../../services/titleService.js';
@@ -26,19 +27,29 @@ function safeText(text: string, maxLen: number): string {
 export const nivelCommand = {
   data: new SlashCommandBuilder()
     .setName('nivel')
-    .setDescription('Atualiza o nivel do usuario')
+    .setDescription(tLang('en', 'level.command.desc'))
+    .setDescriptionLocalizations(getLocalized('level.command.desc'))
     .addIntegerOption((option) =>
       option
         .setName('nivel')
-        .setDescription('Novo nivel do usuario (1 a 99)')
+        .setDescription(tLang('en', 'level.option.level'))
+        .setDescriptionLocalizations(getLocalized('level.option.level'))
         .setRequired(true)
         .setMinValue(1)
         .setMaxValue(99),
     )
-    .addUserOption((option) => option.setName('user').setDescription('Jogador alvo').setRequired(false)),
+    .addUserOption((option) =>
+      option
+        .setName('user')
+        .setDescription(tLang('en', 'level.option.user'))
+        .setDescriptionLocalizations(getLocalized('level.option.user'))
+        .setRequired(false),
+    ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) return;
+
+    const t = getTranslator(interaction.guildId);
 
     const target = interaction.options.getUser('user') ?? interaction.user;
     const isSelf = target.id === interaction.user.id;
@@ -47,10 +58,7 @@ export const nivelCommand = {
     if (!isSelf) {
       const hasPermission = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false;
       if (!hasPermission && !env.allowAdminEdit) {
-        await safeRespond(
-          interaction,
-          `${EMOJI_WARNING} Voce precisa de permissao de moderador para editar o nivel de outra pessoa.`,
-        );
+        await safeRespond(interaction, t('level.permission.denied', { emoji: EMOJI_WARNING }));
         return;
       }
     }
@@ -58,28 +66,32 @@ export const nivelCommand = {
     try {
       const profile = getPlayerProfile(target.id, interaction.guildId ?? null);
       if (!profile) {
-        const embed = buildMissingProfileEmbed(target);
+        const embed = buildMissingProfileEmbed(t, target);
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
 
       const updated = updatePlayerLevel(target.id, level, interaction.user.id, interaction.guildId ?? null);
       if (!updated) {
-        await safeRespond(interaction, `${EMOJI_WARNING} Nao consegui atualizar o nivel agora.`);
+        await safeRespond(interaction, t('level.update_failed', { emoji: EMOJI_WARNING }));
         return;
       }
 
-      appendProfileHistory(target.id, {
-        type: 'nivel',
-        label: `Nivel ${level}`,
-      }, interaction.guildId ?? null);
+      appendProfileHistory(
+        target.id,
+        {
+          type: 'nivel',
+          label: t('level.history', { level }),
+        },
+        interaction.guildId ?? null,
+      );
 
       const embed = createSuziEmbed('success')
-        .setTitle(`${EMOJI_STAR} Nivel atualizado`)
+        .setTitle(`${EMOJI_STAR} ${t('level.updated.title')}`)
         .setThumbnail(target.displayAvatarURL({ size: 128 }))
         .addFields(
-          { name: 'Jogador', value: safeText(updated.playerName, 1024), inline: true },
-          { name: 'Novo nivel', value: String(updated.level), inline: true },
+          { name: t('level.updated.player'), value: safeText(updated.playerName, 1024), inline: true },
+          { name: t('level.updated.new_level'), value: String(updated.level), inline: true },
         );
 
       await safeRespond(interaction, { embeds: [embed] });
@@ -87,14 +99,14 @@ export const nivelCommand = {
       if (isSelf) {
         const xpResult = awardXp(interaction.user.id, 1, { reason: 'nivel' }, interaction.guildId ?? null);
         if (xpResult.leveledUp) {
-          await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
+          await safeRespond(interaction, t('level.level_up', { emoji: EMOJI_SPARKLE, level: xpResult.newLevel }));
         }
       }
 
       try {
         const { unlocked } = trackEvent(interaction.user.id, 'nivel', { self: isSelf });
         unlockTitlesFromAchievements(interaction.user.id, unlocked);
-        const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+        const unlockEmbed = buildAchievementUnlockEmbed(t, unlocked);
         if (unlockEmbed) {
           await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
@@ -103,7 +115,7 @@ export const nivelCommand = {
       }
     } catch (error) {
       logError('SUZI-CMD-002', error, { message: 'Erro no comando /nivel' });
-      await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
+      await safeRespond(interaction, toPublicMessage('SUZI-CMD-002', interaction.guildId));
     }
   },
 };

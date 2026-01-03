@@ -1,6 +1,7 @@
 ﻿import { join } from 'path';
 
 import { isDbAvailable } from '../db/index.js';
+import { t } from '../i18n/index.js';
 import {
   clearProfileBanner as clearProfileBannerDb,
   getUserProfile as getUserProfileDb,
@@ -39,7 +40,7 @@ type SuziIntroContext = {
 
 const PLAYERS_PATH = join(process.cwd(), 'data', 'players.json');
 
-const INTRO_TEMPLATE = 'Oi, {name}.';
+const INTRO_TEMPLATE_KEY = 'intro.template';
 
 function normalizeName(name?: string): string {
   if (!name) return '';
@@ -200,5 +201,5 @@ export function formatSuziIntro(
   if (!displayName) {
     return '';
   }
-  return INTRO_TEMPLATE.replace('{name}', displayName);
+  return t(guildId ?? null, INTRO_TEMPLATE_KEY, { name: displayName });
 }

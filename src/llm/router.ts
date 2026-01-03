@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 
 import { env } from '../config/env.js';
+import { getTranslator } from '../i18n/index.js';
 import { parseDice, rollDice } from '../services/dice.js';
 import { bumpUsage as bumpGeminiUsage, getTodayKey } from '../services/geminiUsageService.js';
 import type { PlayerProfile } from '../services/profileService.js';
@@ -112,41 +113,48 @@ function buildCacheKey({
   return `${scopeGuild}:${scopeUser}:${type}:${hashQuestion(normalized)}`;
 }
 
-function buildSystemPrompt(): string {
-  return [
-    'Voce e Suzi, assistente de jogos, filmes e tutoriais.',
-    'Responda em pt-BR de forma objetiva e amigavel.',
-    'Nao use estilo RPG, fantasia ou linguagem de personagem.',
-    'Chame o usuario apenas pelo primeiro nome, sem titulos.',
-    'Se nao tiver certeza, seja honesto e sugira caminhos.',
-    'Nao invente patches, versoes ou numeros.',
-  ].join('\n');
+function buildSystemPrompt(t: (key: string, vars?: Record<string, string | number>) => string): string {
+  return t('llm.system_prompt');
 }
 
-function buildProfileSummary(profile?: PlayerProfile | null, displayName?: string): string {
+function buildProfileSummary(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  profile?: PlayerProfile | null,
+  displayName?: string,
+): string {
   const name = displayName?.trim() || profile?.playerName?.trim();
   if (!name) {
-    return 'Nome do usuario: nao informado.';
+    return t('llm.profile.missing');
   }
-  return `Nome do usuario: ${name}.`;
+  return t('llm.profile.present', { name });
 }
 
-function buildPrompt(input: AskInput): string {
+function buildPrompt(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  input: AskInput,
+): string {
   const historyText =
     input.userHistory && input.userHistory.length
-      ? `Historico recente:\n${input.userHistory.map((item) => `- ${item}`).join('\n')}`
-      : 'Historico recente: nenhum.';
+      ? t('llm.prompt.history.list', { items: input.userHistory.map((item) => `- ${item}`).join('\n') })
+      : t('llm.prompt.history.none');
 
-  const scopeLine = input.questionType ? `Tipo: ${input.questionType}.` : 'Tipo: nao informado.';
-  const hintLine = input.scopeHint ? `Observacao: ${input.scopeHint}` : '';
+  const typeLabel = input.questionType
+    ? input.questionType === 'FILME'
+      ? t('labels.movie')
+      : input.questionType === 'TUTORIAL'
+        ? t('labels.tutorial')
+        : t('labels.game')
+    : null;
+  const scopeLine = typeLabel ? t('llm.prompt.type', { type: typeLabel }) : t('llm.prompt.type.none');
+  const hintLine = input.scopeHint ? t('llm.prompt.hint', { hint: input.scopeHint }) : '';
 
   return [
-    `Pergunta: ${input.question}`,
+    t('llm.prompt.question', { question: input.question }),
     scopeLine,
     hintLine,
-    buildProfileSummary(input.userProfile, input.userDisplayName),
+    buildProfileSummary(t, input.userProfile, input.userDisplayName),
     historyText,
-    'Responda com 1 a 2 paragrafos curtos ou bullets.',
+    t('llm.prompt.response_format'),
   ]
     .filter(Boolean)
     .join('\n');
@@ -163,10 +171,10 @@ export function classifyIntent({
   if (normalized.length < 140) {
     return 'quick_fact';
   }
-  if (/(recomenda|me indica|sugere)/i.test(normalized)) {
+  if (/(recomenda|me indica|sugere|recommend|suggest|indica)/i.test(normalized)) {
     return 'recommendation';
   }
-  if (/(como|passo a passo|erro|bug|configurar)/i.test(normalized)) {
+  if (/(como|passo a passo|erro|bug|configurar|how|step by step|steps|setup|configure)/i.test(normalized)) {
     return 'tutorial';
   }
   if (tipo === 'TUTORIAL') {
@@ -229,7 +237,10 @@ function resolveAdminMaxTokens(useCase: AdminUseCase): number {
   return useCase === 'ADMIN_MONITOR' ? env.llmMaxOutputTokensShort : env.llmMaxOutputTokensLong;
 }
 
-function handleLocalDice(question: string): string | null {
+function handleLocalDice(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  question: string,
+): string | null {
   const match = /(\d+)\s*d\s*(\d+)/i.exec(question);
   if (!match) return null;
   const parsed = parseDice(`${match[1]}d${match[2]}`);
@@ -240,24 +251,35 @@ function handleLocalDice(question: string): string | null {
   let results = shown.join(', ');
   if (rolls.length > maxShown) {
     const remaining = rolls.length - maxShown;
-    results = `${results}, ... +${remaining} resultados`;
+    results = t('llm.dice.more', { results, count: remaining });
   }
-  return `Rolagem: ${parsed.count}d${parsed.sides}\nResultados: ${results}\nTotal: ${total}`;
+  return [
+    t('llm.dice.roll', { expr: `${parsed.count}d${parsed.sides}` }),
+    t('llm.dice.results', { results }),
+    t('llm.dice.total', { total }),
+  ].join('\n');
 }
 
-function buildFallback(question: string): string {
-  return (
-    'Nao consegui consultar o LLM agora. Aqui vai uma dica geral:\n' +
-    'Foque no basico, avance com calma e ajuste sua estrategia conforme o contexto.\n' +
-    `Pergunta original: ${question}`
-  );
+function buildFallback(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  question: string,
+): string {
+  return [
+    t('llm.fallback.intro'),
+    t('llm.fallback.tip'),
+    t('llm.fallback.question', { question }),
+  ].join('\n');
 }
 
-function buildRequest(input: AskInput, intent: LlmIntent): LlmRequest {
+function buildRequest(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  input: AskInput,
+  intent: LlmIntent,
+): LlmRequest {
   return {
     messages: [
-      { role: 'system', content: buildSystemPrompt() },
-      { role: 'user', content: buildPrompt(input) },
+      { role: 'system', content: buildSystemPrompt(t) },
+      { role: 'user', content: buildPrompt(t, input) },
     ],
     maxOutputTokens: resolveMaxTokens(intent),
     timeoutMs: env.llmTimeoutMs,
@@ -278,6 +300,7 @@ function shouldCooldown(errorType: string, status?: number): boolean {
 }
 
 export async function ask(input: AskInput): Promise<RouterAskResult> {
+  const t = getTranslator(input.guildId);
   const intent = input.intentOverride ?? classifyIntent({ tipo: input.questionType, pergunta: input.question });
   const cacheKey = buildCacheKey({
     guildId: input.guildId,
@@ -305,7 +328,7 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
   }
   cacheMisses += 1;
 
-  const diceText = handleLocalDice(input.question);
+  const diceText = handleLocalDice(t, input.question);
   if (diceText) {
     return {
       text: diceText,
@@ -318,11 +341,11 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
     };
   }
 
-  const request = buildRequest(input, intent);
+  const request = buildRequest(t, input, intent);
   let candidates = pickProviders(intent).filter((candidate) => isProviderEnabled(candidate.provider));
   if (!candidates.length) {
     return {
-      text: buildFallback(input.question),
+      text: buildFallback(t, input.question),
       provider: getPrimaryProvider(),
       model: 'fallback',
       latencyMs: 0,
@@ -383,7 +406,7 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
     }
 
     lastError = {
-      text: buildFallback(input.question),
+      text: buildFallback(t, input.question),
       provider: response.provider,
       model: response.model,
       latencyMs: response.latencyMs,
@@ -400,7 +423,7 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
 
   return (
     lastError ?? {
-      text: buildFallback(input.question),
+      text: buildFallback(t, input.question),
       provider: getPrimaryProvider(),
       model: 'fallback',
       latencyMs: 0,
@@ -412,11 +435,12 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
 }
 
 export async function askAdmin(input: AdminAskInput): Promise<RouterAskResult> {
+  const t = getTranslator(input.guildId);
   const modelGoal = input.useCase === 'ADMIN_MONITOR' ? 'fast' : 'smart';
   const model = await resolvePoeModel(modelGoal);
   if (!model || !isPoeAvailable()) {
     return {
-      text: 'Poe indisponivel agora. Verifique POE_API_KEY e POE_ENABLED.',
+      text: t('llm.admin.unavailable'),
       provider: 'poe',
       model: model ?? 'poe',
       latencyMs: 0,
@@ -457,7 +481,7 @@ export async function askAdmin(input: AdminAskInput): Promise<RouterAskResult> {
   }
 
   return {
-    text: 'Nao consegui consultar o Poe agora. Tente novamente em instantes.',
+    text: t('llm.admin.failed'),
     provider: 'poe',
     model: response.model,
     latencyMs: response.latencyMs,

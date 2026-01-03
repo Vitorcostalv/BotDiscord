@@ -5,6 +5,8 @@ import type { HistoryEvent } from '../services/historyService.js';
 import type { PlayerProfile } from '../services/profileService.js';
 import type { XpState } from '../services/xpService.js';
 
+type Translator = (key: string, vars?: Record<string, string | number>) => string;
+
 export const SUZI_COLORS = {
   primary: 0x7d3cff,
   accent: 0xff5ca8,
@@ -39,12 +41,12 @@ const CLASS_EMOJI: Record<string, string> = {
   paladino: '\u{1F6E1}\uFE0F',
 };
 
-const HISTORY_LABELS: Record<string, string> = {
-  roll: `${EMOJI.dice} Rolagem`,
-  pergunta: `${EMOJI.brain} Pergunta`,
-  jogo: `${EMOJI.game} Jogo`,
-  nivel: `${EMOJI.level} Nivel`,
-  register: `${EMOJI.register} Registro`,
+const HISTORY_LABEL_KEYS: Record<string, string> = {
+  roll: 'history.roll',
+  pergunta: 'history.question',
+  jogo: 'history.game',
+  nivel: 'history.level',
+  register: 'history.register',
 };
 
 type AchievementSummary = {
@@ -81,141 +83,140 @@ function getClassEmoji(className: string | undefined | null): string {
   return CLASS_EMOJI[normalized] ?? EMOJI.class;
 }
 
-function formatAchievementsCompact(summary: AchievementSummary): string {
+function formatAchievementsCompact(t: Translator, summary: AchievementSummary): string {
   const recent = summary.recent.slice(0, 3);
-  const lines = [`Total: ${summary.total}`];
+  const lines = [t('achievements.total', { total: summary.total })];
   if (recent.length) {
-    lines.push(...recent.map((item) => `- ${item.emoji} ${item.name}`));
+    lines.push(...recent.map((item) => `- ${item.emoji} ${getAchievementName(t, item)}`));
   }
   return safeText(lines.join('\n'), 1024);
 }
 
-function formatAchievementsDetailed(summary: AchievementSummary): string {
+function formatAchievementsDetailed(t: Translator, summary: AchievementSummary): string {
   const recent = summary.recent.slice(0, 6);
-  const lines = recent.length ? recent.map((item) => `${item.emoji} ${item.name}`) : ['Nenhuma ainda.'];
-  lines.push(`Total: ${summary.total}`);
+  const lines = recent.length
+    ? recent.map((item) => `${item.emoji} ${getAchievementName(t, item)}`)
+    : [t('achievements.none')];
+  lines.push(t('achievements.total', { total: summary.total }));
   return safeText(lines.join('\n'), 1024);
 }
 
-function formatHistory(events: HistoryEvent[] = []): string {
-  if (!events.length) return 'Nenhuma atividade recente.';
+function formatHistory(t: Translator, events: HistoryEvent[] = []): string {
+  if (!events.length) return t('history.none');
   const lines = events.slice(0, 3).map((event) => {
-    const label = HISTORY_LABELS[event.type] ?? event.type;
+    const key = HISTORY_LABEL_KEYS[event.type] ?? event.type;
+    const label = HISTORY_LABEL_KEYS[event.type] ? t(key) : event.type;
     const time = `<t:${Math.floor(event.ts / 1000)}:R>`;
     return `- ${label}: ${safeText(event.label, 60)} ${time}`;
   });
   return safeText(lines.join('\n'), 1024);
 }
 
-function formatTitle(equippedTitle: string | null | undefined, classTitle: string): string {
+function formatTitle(t: Translator, equippedTitle: string | null | undefined, classTitle: string): string {
   if (equippedTitle) {
-    return `Equipado: ${safeText(equippedTitle, 256)}\nClasse: ${safeText(classTitle, 256)}`;
+    return `${t('profile.title.equipped')}: ${safeText(equippedTitle, 256)}\n${t('profile.title.class')}: ${safeText(
+      classTitle,
+      256,
+    )}`;
   }
-  return `Classe: ${safeText(classTitle, 256)}`;
+  return `${t('profile.title.class')}: ${safeText(classTitle, 256)}`;
 }
 
-function formatTitleCompact(equippedTitle: string | null | undefined, classTitle: string): string {
+function formatTitleCompact(t: Translator, equippedTitle: string | null | undefined, classTitle: string): string {
   if (equippedTitle) {
-    return `Equipado: ${safeText(equippedTitle, 256)}`;
+    return `${t('profile.title.equipped')}: ${safeText(equippedTitle, 256)}`;
   }
-  return `Classe: ${safeText(classTitle, 256)}`;
+  return `${t('profile.title.class')}: ${safeText(classTitle, 256)}`;
 }
 
-function formatXp(xp?: XpState): string {
+function formatXp(t: Translator, xp?: XpState): string {
   if (!xp) return '-';
-  const streak = xp.streak.days > 1 ? `\nStreak: ${xp.streak.days} dias` : '';
-  return `XP: ${xp.xp}\nNivel: ${xp.level}${streak}`;
+  const streak = xp.streak.days > 1 ? `\n${t('profile.streak')}: ${xp.streak.days} ${t('profile.days')}` : '';
+  return `XP: ${xp.xp}\n${t('profile.level')}: ${xp.level}${streak}`;
 }
 
-function formatXpCompact(xp?: XpState): string {
+function formatXpCompact(t: Translator, xp?: XpState): string {
   if (!xp) return '-';
-  return `Nivel: ${xp.level} - XP: ${xp.xp}`;
+  return `${t('profile.level')}: ${xp.level} - XP: ${xp.xp}`;
 }
 
 export function createSuziEmbed(color: keyof typeof SUZI_COLORS = 'primary'): EmbedBuilder {
   return new EmbedBuilder().setColor(SUZI_COLORS[color]);
 }
 
-export function buildAchievementUnlockEmbed(unlocked: AchievementDefinition[]): EmbedBuilder | null {
+function getAchievementName(t: Translator, item: AchievementDefinition): string {
+  const key = `achievement.${item.id}.name`;
+  const translated = t(key);
+  return translated === key ? item.name : translated;
+}
+
+function getAchievementDescription(t: Translator, item: AchievementDefinition): string {
+  const key = `achievement.${item.id}.description`;
+  const translated = t(key);
+  return translated === key ? item.description : translated;
+}
+
+export function buildAchievementUnlockEmbed(
+  t: Translator,
+  unlocked: AchievementDefinition[],
+): EmbedBuilder | null {
   if (!unlocked.length) return null;
   if (unlocked.length === 1) {
     const item = unlocked[0];
     return createSuziEmbed('accent')
-      .setTitle(`${EMOJI.trophy} Conquista desbloqueada: ${item.emoji} ${item.name}`)
-      .setDescription(item.description);
+      .setTitle(
+        `${EMOJI.trophy} ${t('achievements.unlocked.single', {
+          name: `${item.emoji} ${getAchievementName(t, item)}`,
+        })}`,
+      )
+      .setDescription(getAchievementDescription(t, item));
   }
 
-  const lines = unlocked.map((item) => `- ${item.emoji} ${item.name}`);
+  const lines = unlocked.map((item) => `- ${item.emoji} ${getAchievementName(t, item)}`);
   return createSuziEmbed('accent')
-    .setTitle(`${EMOJI.trophy} Conquistas desbloqueadas`)
+    .setTitle(`${EMOJI.trophy} ${t('achievements.unlocked.multi')}`)
     .setDescription(lines.join('\n'));
 }
 
-export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
+export function buildHelpEmbed(t: Translator, botUser?: User | null): EmbedBuilder {
   const embed = createSuziEmbed('primary')
-    .setTitle(`${EMOJI.scroll} Suzi - Central de Comandos`)
-    .setDescription('Sua assistente de jogos, filmes e tutoriais com dicas, reviews e rolagens.')
+    .setTitle(`${EMOJI.scroll} ${t('help.title')}`)
+    .setDescription(t('help.description'))
     .addFields(
       {
-        name: `${EMOJI.brain} Informacoes`,
-        value: safeText('/ping - Verifica latencia do bot\n/sobre - Saiba a lore da Suzi', 1024),
+        name: `${EMOJI.brain} ${t('help.section.info.name')}`,
+        value: safeText(t('help.section.info.value'), 1024),
       },
       {
-        name: 'Integracoes',
-        value: safeText(
-          '/steam acao:<link|view|refresh|unlink>\n- Vincula e consulta perfil Steam',
-          1024,
-        ),
+        name: t('help.section.integrations.name'),
+        value: safeText(t('help.section.integrations.value'), 1024),
       },
       {
-        name: `${EMOJI.game} Midia & Perguntas`,
-        value: safeText(
-          '/jogo nome:<texto> plataforma:<opcional>\n- Ajuda estruturada sobre um jogo\n' +
-            '/pergunta tipo:<JOGO|FILME|TUTORIAL> pergunta:<texto>\n- Perguntas sobre jogos, filmes e tutoriais',
-          1024,
-        ),
+        name: `${EMOJI.game} ${t('help.section.media.name')}`,
+        value: safeText(t('help.section.media.value'), 1024),
       },
       {
-        name: `${EMOJI.level} Avaliacoes`,
-        value: safeText(
-          '/review add|remove|view|my|top|favorite\n- Avaliacoes de jogos e filmes',
-          1024,
-        ),
+        name: `${EMOJI.level} ${t('help.section.reviews.name')}`,
+        value: safeText(t('help.section.reviews.value'), 1024),
       },
       {
-        name: `${EMOJI.bolt} Recomendacoes`,
-        value: safeText(
-          '/recomendar acao:<jogo|filme|tutorial>\n- (opcional) genero, romance_fechado',
-          1024,
-        ),
+        name: `${EMOJI.bolt} ${t('help.section.recommendations.name')}`,
+        value: safeText(t('help.section.recommendations.value'), 1024),
       },
       {
-        name: `${EMOJI.dice} RPG`,
-        value: safeText('/roll expressao:<NdM>\n- Rolagem de dados (ex: 2d20, 1d100)', 1024),
+        name: `${EMOJI.dice} ${t('help.section.rpg.name')}`,
+        value: safeText(t('help.section.rpg.value'), 1024),
       },
       {
-        name: 'Historico & Estatisticas',
-        value: safeText(
-          '/historico user:<opcional> limite:<1..10>\n- Ultimas rolagens do usuario\n' +
-            '/status\n- Status do Gemini e resumo de rolagens do servidor',
-          1024,
-        ),
+        name: t('help.section.history.name'),
+        value: safeText(t('help.section.history.value'), 1024),
       },
       {
-        name: `${EMOJI.profile} Perfil do Player`,
-        value: safeText(
-          '/register nome_jogador:<texto> nivel:<opcional>\n- Registra seu perfil\n' +
-            '/perfil user:<opcional>\n- Mostra o perfil com abas\n' +
-            '/perfil banner set url:<texto>\n- Define o banner do perfil\n' +
-            '/perfil banner clear\n- Remove o banner custom\n' +
-            '/nivel nivel:<1..99> user:<opcional>\n- Atualiza o nivel do usuario\n' +
-            '/title acao:<add|remove> titulo:<texto>\n- Gerencia titulo equipado\n' +
-            '/conquistas\n- Lista suas conquistas',
-          1024,
-        ),
+        name: `${EMOJI.profile} ${t('help.section.profile.name')}`,
+        value: safeText(t('help.section.profile.value'), 1024),
       },
     )
-    .setFooter({ text: 'Use /register para comecar sua jornada com a Suzi' });
+    .setFooter({ text: t('help.footer') });
 
   if (botUser) {
     embed.setThumbnail(botUser.displayAvatarURL({ size: 128 }));
@@ -224,27 +225,31 @@ export function buildHelpEmbed(botUser?: User | null): EmbedBuilder {
   return embed;
 }
 
-export function buildRegisterSuccessEmbed(user: User, player: PlayerProfile): EmbedBuilder {
+export function buildRegisterSuccessEmbed(
+  t: Translator,
+  user: User,
+  player: PlayerProfile,
+): EmbedBuilder {
   return createSuziEmbed('success')
-    .setTitle(`${EMOJI.register} Registro concluido`)
-    .setDescription(`Bem-vindo a aventura, ${safeText(player.playerName, 256)}!`)
+    .setTitle(`${EMOJI.register} ${t('register.success.title')}`)
+    .setDescription(t('register.success.desc', { name: safeText(player.playerName, 256) }))
     .setThumbnail(user.displayAvatarURL({ size: 128 }))
     .addFields(
-      { name: 'Jogador', value: safeText(player.playerName, 1024), inline: true },
-      { name: `${EMOJI.level} Nivel inicial`, value: String(player.level), inline: true },
+      { name: t('register.success.field.player'), value: safeText(player.playerName, 1024), inline: true },
+      { name: `${EMOJI.level} ${t('register.success.field.level')}`, value: String(player.level), inline: true },
       {
-        name: 'Proximos passos',
-        value: safeText('Use /perfil para ver seu perfil\nUse /nivel para evoluir seu nivel', 1024),
+        name: t('register.success.field.next'),
+        value: safeText(t('register.success.next'), 1024),
       },
     )
-    .setFooter({ text: 'Suzi - Registro de Player' });
+    .setFooter({ text: t('register.success.footer') });
 }
 
-export function buildRegisterWarningEmbed(user?: User | null): EmbedBuilder {
+export function buildRegisterWarningEmbed(t: Translator, user?: User | null): EmbedBuilder {
   const embed = createSuziEmbed('warning')
-    .setTitle(`${EMOJI.warning} Registro ja existente`)
-    .setDescription('Use /register force:true para sobrescrever ou /perfil para ver os dados.')
-    .setFooter({ text: 'Suzi - Registro de Player' });
+    .setTitle(`${EMOJI.warning} ${t('register.exists.title')}`)
+    .setDescription(t('register.exists.desc'))
+    .setFooter({ text: t('register.exists.footer') });
 
   if (user) {
     embed.setThumbnail(user.displayAvatarURL({ size: 128 }));
@@ -254,46 +259,51 @@ export function buildRegisterWarningEmbed(user?: User | null): EmbedBuilder {
 }
 
 export function buildProfileEmbed(
+  t: Translator,
   user: User,
   player: PlayerProfile,
   extras: ProfileExtras,
   mode: 'compact' | 'detailed' = 'detailed',
 ): EmbedBuilder {
   const playerLabel = player.playerName ? safeText(player.playerName, 256) : `<@${user.id}>`;
-  const description = `${safeText(player.characterName, 256)} - ${safeText(player.className, 256)} - Nivel ${player.level}`;
+  const description = `${safeText(player.characterName, 256)} - ${safeText(player.className, 256)} - ${t(
+    'profile.level',
+  )} ${player.level}`;
 
   if (mode === 'compact') {
     const compactEmbed = createSuziEmbed('primary')
-      .setTitle(`${EMOJI.profile} Perfil - ${playerLabel}`)
+      .setTitle(`${EMOJI.profile} ${t('profile.title')} - ${playerLabel}`)
       .setDescription(description)
       .setThumbnail(user.displayAvatarURL({ size: 128 }))
       .addFields(
         {
-          name: `${EMOJI.pin} Personagem`,
+          name: `${EMOJI.pin} ${t('profile.character')}`,
           value: safeText(
-            `Nome: ${player.characterName}\nClasse: ${player.className}\nNivel: ${player.level}`,
+            `${t('profile.character_name')}: ${player.characterName}\n${t('profile.class')}: ${
+              player.className
+            }\n${t('profile.level')}: ${player.level}`,
             1024,
           ),
           inline: true,
         },
         {
-          name: `${EMOJI.tag} Titulo`,
-          value: formatTitleCompact(extras.equippedTitle, extras.classTitle),
+          name: `${EMOJI.tag} ${t('profile.title_label')}`,
+          value: formatTitleCompact(t, extras.equippedTitle, extras.classTitle),
           inline: true,
         },
-        { name: `${EMOJI.bolt} Suzi XP`, value: formatXpCompact(extras.xp), inline: true },
+        { name: `${EMOJI.bolt} ${t('profile.suzi_xp')}`, value: formatXpCompact(t, extras.xp), inline: true },
         {
-          name: `${EMOJI.trophy} Conquistas`,
-          value: extras.achievements ? formatAchievementsCompact(extras.achievements) : 'Total: 0',
+          name: `${EMOJI.trophy} ${t('profile.achievements')}`,
+          value: extras.achievements ? formatAchievementsCompact(t, extras.achievements) : t('achievements.total', { total: 0 }),
         },
       )
       .setFooter({
-        text: 'Use /historico para ver rolagens - Use /perfil detalhado:true para ver tudo',
+        text: t('profile.compact.footer'),
       });
 
     if (extras.favoritesText !== undefined) {
       compactEmbed.addFields({
-        name: `${EMOJI.level} Favoritos`,
+        name: `${EMOJI.level} ${t('profile.favorites')}`,
         value: safeText(extras.favoritesText, 1024),
       });
     }
@@ -304,47 +314,47 @@ export function buildProfileEmbed(
   const classEmoji = getClassEmoji(player.className);
 
   const embed = createSuziEmbed('primary')
-    .setTitle(`${EMOJI.profile} Perfil - ${playerLabel}`)
+    .setTitle(`${EMOJI.profile} ${t('profile.title')} - ${playerLabel}`)
     .setDescription(description)
     .setThumbnail(user.displayAvatarURL({ size: 128 }))
     .addFields(
-      { name: 'Personagem', value: safeText(player.characterName, 1024), inline: true },
-      { name: `${EMOJI.class} Classe`, value: `${classEmoji} ${safeText(player.className, 1000)}`, inline: true },
-      { name: `${EMOJI.level} Nivel`, value: String(player.level), inline: true },
-      { name: 'Titulos', value: formatTitle(extras.equippedTitle, extras.classTitle), inline: false },
-      { name: 'Suzi XP', value: formatXp(extras.xp), inline: true },
+      { name: t('profile.character'), value: safeText(player.characterName, 1024), inline: true },
+      { name: `${EMOJI.class} ${t('profile.class')}`, value: `${classEmoji} ${safeText(player.className, 1000)}`, inline: true },
+      { name: `${EMOJI.level} ${t('profile.level')}`, value: String(player.level), inline: true },
+      { name: t('profile.titles'), value: formatTitle(t, extras.equippedTitle, extras.classTitle), inline: false },
+      { name: t('profile.suzi_xp'), value: formatXp(t, extras.xp), inline: true },
     )
-    .setFooter({ text: 'Suzi - Perfil do Player' });
+    .setFooter({ text: t('profile.footer') });
 
   if (extras.favoritesText !== undefined) {
     embed.addFields({
-      name: `${EMOJI.level} Favoritos`,
+      name: `${EMOJI.level} ${t('profile.favorites')}`,
       value: safeText(extras.favoritesText, 1024),
     });
   }
 
   if (extras.achievements) {
     embed.addFields({
-      name: `${EMOJI.trophy} Conquistas`,
-      value: formatAchievementsDetailed(extras.achievements),
+      name: `${EMOJI.trophy} ${t('profile.achievements')}`,
+      value: formatAchievementsDetailed(t, extras.achievements),
     });
   }
 
   if (extras.history) {
     embed.addFields({
-      name: 'Ultimas acoes',
-      value: formatHistory(extras.history),
+      name: t('profile.history'),
+      value: formatHistory(t, extras.history),
     });
   }
 
   return embed;
 }
 
-export function buildMissingProfileEmbed(user?: User | null): EmbedBuilder {
+export function buildMissingProfileEmbed(t: Translator, user?: User | null): EmbedBuilder {
   const embed = createSuziEmbed('warning')
-    .setTitle(`${EMOJI.warning} Perfil nao encontrado`)
-    .setDescription('Essa pessoa ainda nao se registrou. Use /register.')
-    .setFooter({ text: 'Suzi - Perfil do Player' });
+    .setTitle(`${EMOJI.warning} ${t('profile.missing.title')}`)
+    .setDescription(t('profile.missing.desc'))
+    .setFooter({ text: t('profile.missing.footer') });
 
   if (user) {
     embed.setThumbnail(user.displayAvatarURL({ size: 128 }));

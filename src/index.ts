@@ -6,6 +6,7 @@ import { ajudaCommand } from './discord/commands/ajuda.js';
 import { conquistasCommand } from './discord/commands/conquistas.js';
 import { historicoCommand } from './discord/commands/historico.js';
 import { jogoCommand } from './discord/commands/jogo.js';
+import { languageCommand } from './discord/commands/language.js';
 import { nivelCommand } from './discord/commands/nivel.js';
 import { perfilCommand } from './discord/commands/perfil.js';
 import { perguntaCommand } from './discord/commands/pergunta.js';
@@ -19,6 +20,7 @@ import { sobreCommand } from './discord/commands/sobre.js';
 import { statusCommand } from './discord/commands/status.js';
 import { steamCommand } from './discord/commands/steam.js';
 import { titleCommand } from './discord/commands/title.js';
+import { getTranslator } from './i18n/index.js';
 import { initCanvasRuntime } from './render/canvasSetup.js';
 import { safeReply } from './utils/interactions.js';
 import { logError, logInfo } from './utils/logging.js';
@@ -43,6 +45,7 @@ const commandMap = {
   ajuda: ajudaCommand,
   roll: rollCommand,
   historico: historicoCommand,
+  language: languageCommand,
   steam: steamCommand,
   status: statusCommand,
   register: registerPlayerCommand,
@@ -79,13 +82,14 @@ async function startClient(client: ReturnType<typeof createClient>): Promise<voi
   client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
+    const t = getTranslator(interaction.guildId);
     const command = commandMap[interaction.commandName as keyof typeof commandMap];
     if (!command) {
       logError('SUZI-DISCORD-004', new Error('Comando nao registrado'), {
         message: 'Comando nao encontrado',
         commandName: interaction.commandName,
       });
-      await safeReply(interaction, 'Comando nao encontrado.');
+      await safeReply(interaction, t('errors.command_not_found'));
       return;
     }
 
@@ -93,7 +97,7 @@ async function startClient(client: ReturnType<typeof createClient>): Promise<voi
       await command.execute(interaction);
     } catch (error) {
       logError('SUZI-CMD-002', error, { message: 'Erro ao processar comando', command: interaction.commandName });
-      await safeReply(interaction, 'deu ruim aqui, tenta de novo');
+      await safeReply(interaction, t('errors.command_failed'));
     }
   });
 

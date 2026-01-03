@@ -5,6 +5,7 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { env } from '../../config/env.js';
 import { getDb, isDbAvailable } from '../../db/index.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { askAdmin } from '../../llm/router.js';
 import { hasAdminPermission } from '../../services/permissionService.js';
 import { safeDeferReply, safeRespond } from '../../utils/interactions.js';
@@ -25,28 +26,42 @@ const EXPLAIN_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const knowledgeCooldowns = new Map<string, number>();
 const explainCache = new Map<string, { text: string; expiresAt: number }>();
 
+function localizedChoice(labelKey: string, value: string, emoji?: string) {
+  const en = tLang('en', labelKey);
+  const pt = tLang('pt', labelKey);
+  const prefix = emoji ? `${emoji} ` : '';
+  return {
+    name: `${prefix}${en}`,
+    name_localizations: {
+      'en-US': `${prefix}${en}`,
+      'pt-BR': `${prefix}${pt}`,
+    },
+    value,
+  };
+}
+
 const ACTION_CHOICES = [
-  { name: `${EMOJI_TOOL} logs explain`, value: 'logs_explain' },
-  { name: `${EMOJI_COMPASS} config audit`, value: 'config_audit' },
-  { name: `${EMOJI_BOOKS} knowledge build`, value: 'knowledge_build' },
-  { name: `${EMOJI_BROOM} truncate`, value: 'truncate' },
+  localizedChoice('admin.action.logs_explain', 'logs_explain', EMOJI_TOOL),
+  localizedChoice('admin.action.config_audit', 'config_audit', EMOJI_COMPASS),
+  localizedChoice('admin.action.knowledge_build', 'knowledge_build', EMOJI_BOOKS),
+  localizedChoice('admin.action.truncate', 'truncate', EMOJI_BROOM),
 ];
 
 const KNOWLEDGE_CHOICES = [
-  { name: 'errors', value: 'errors' },
-  { name: 'tutorial', value: 'tutorial' },
-  { name: 'help', value: 'help' },
-  { name: 'lore', value: 'lore' },
+  localizedChoice('admin.knowledge.errors', 'errors'),
+  localizedChoice('admin.knowledge.tutorial', 'tutorial'),
+  localizedChoice('admin.knowledge.help', 'help'),
+  localizedChoice('admin.knowledge.lore', 'lore'),
 ];
 
 const TRUNCATE_CHOICES = [
-  { name: 'reviews', value: 'reviews' },
-  { name: 'rolls', value: 'rolls' },
-  { name: 'history', value: 'history' },
-  { name: 'questions', value: 'questions' },
-  { name: 'steam', value: 'steam' },
-  { name: 'profiles', value: 'profiles' },
-  { name: 'all', value: 'all' },
+  localizedChoice('admin.truncate.reviews', 'reviews'),
+  localizedChoice('admin.truncate.rolls', 'rolls'),
+  localizedChoice('admin.truncate.history', 'history'),
+  localizedChoice('admin.truncate.questions', 'questions'),
+  localizedChoice('admin.truncate.steam', 'steam'),
+  localizedChoice('admin.truncate.profiles', 'profiles'),
+  localizedChoice('admin.truncate.all', 'all'),
 ];
 
 const TRUNCATE_TABLES: Record<TruncateTarget, string[]> = {
@@ -87,11 +102,11 @@ function now(): number {
   return Date.now();
 }
 
-function formatKeyStatus(value: string): string {
+function formatKeyStatus(t: (key: string, vars?: Record<string, string | number>) => string, value: string): string {
   const trimmed = value?.trim();
-  if (!trimmed) return 'unset';
+  if (!trimmed) return t('admin.config.unset');
   const last4 = trimmed.slice(-4);
-  return `set (...${last4})`;
+  return t('admin.config.set', { last4 });
 }
 
 function sanitizeContext(input?: string | null): string {
@@ -117,19 +132,22 @@ function safeText(text: string, maxLen: number): string {
   return `${normalized.slice(0, sliceEnd).trimEnd()}...`;
 }
 
-async function ensureAdmin(interaction: ChatInputCommandInteraction): Promise<boolean> {
+async function ensureAdmin(
+  interaction: ChatInputCommandInteraction,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): Promise<boolean> {
   if (!interaction.guildId) {
     const embed = createSuziEmbed('warning')
-      .setTitle('Somente em servidores')
-      .setDescription('Use este comando dentro de um servidor.');
+      .setTitle(t('common.server_only.title'))
+      .setDescription(t('common.server_only.desc'));
     await safeRespond(interaction, { embeds: [embed] }, true);
     return false;
   }
 
   if (!hasAdminPermission(interaction)) {
     const embed = createSuziEmbed('warning')
-      .setTitle('Permissao insuficiente')
-      .setDescription('Somente administradores podem usar este comando.');
+      .setTitle(t('admin.permission.title'))
+      .setDescription(t('admin.permission.desc'));
     await safeRespond(interaction, { embeds: [embed] }, true);
     return false;
   }
@@ -160,16 +178,26 @@ function parseExplainSections(text: string): {
   const lines = text.split('\n');
   const sections: Record<string, string> = {};
   for (const line of lines) {
-    const match = /^(Explicacao|Causa|Correcao|Prevencao)\s*:\s*(.+)$/i.exec(line.trim());
+    const match = /^(Explicacao|Causa|Correcao|Prevencao|Explanation|Cause|Fix|Prevention)\s*:\s*(.+)$/i.exec(
+      line.trim(),
+    );
     if (!match) continue;
-    const key = match[1].toLowerCase();
+    const rawKey = match[1].toLowerCase();
+    const key =
+      rawKey === 'explicacao' || rawKey === 'explanation'
+        ? 'explanation'
+        : rawKey === 'causa' || rawKey === 'cause'
+          ? 'cause'
+          : rawKey === 'correcao' || rawKey === 'fix'
+            ? 'fix'
+            : 'prevention';
     sections[key] = match[2].trim();
   }
   return {
-    explanation: sections.explicacao,
-    cause: sections.causa,
-    fix: sections.correcao,
-    prevention: sections.prevencao,
+    explanation: sections.explanation,
+    cause: sections.cause,
+    fix: sections.fix,
+    prevention: sections.prevention,
   };
 }
 
@@ -182,83 +210,77 @@ function isKnowledgeCooldownActive(key: string): { ok: true } | { ok: false; wai
   return { ok: false, wait: Math.ceil((expiresAt - now()) / 1000) };
 }
 
-function buildExplainPrompt(code: string, context: string): { system: string; user: string } {
-  const system = [
-    'Voce e Suzi Admin.',
-    'Explique erros de forma objetiva e em pt-BR.',
-    'Responda com 4 linhas: Explicacao, Causa, Correcao, Prevencao.',
-    'Nao inclua dados sensiveis ou chaves.',
-  ].join('\n');
-  const user = [
-    `Codigo do erro: ${code}`,
-    context ? `Contexto:\n${context}` : 'Contexto: n/d',
-  ].join('\n');
+function buildExplainPrompt(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  code: string,
+  context: string,
+): { system: string; user: string } {
+  const system = t('admin.prompt.explain.system');
+  const safeContext = context || t('admin.prompt.context.none');
+  const user = t('admin.prompt.explain.user', { code, context: safeContext });
   return { system, user };
 }
 
-function buildAuditPrompt(summary: string): { system: string; user: string } {
-  const system = [
-    'Voce e Suzi Admin.',
-    'Gere um checklist curto de verificacoes.',
-    'Foque em configuracoes faltantes ou inconsistentes.',
-    'Responda em bullet points.',
-  ].join('\n');
-  const user = `Resumo atual:\n${summary}`;
+function buildAuditPrompt(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  summary: string,
+): { system: string; user: string } {
+  const system = t('admin.prompt.audit.system');
+  const user = t('admin.prompt.audit.user', { summary });
   return { system, user };
 }
 
-function buildKnowledgePrompt(type: KnowledgeType, context: string): { system: string; user: string } {
-  const system = [
-    'Voce e Suzi Admin.',
-    'Gere conteudo estruturado e limpo.',
-    'Nao inclua dados sensiveis.',
-  ].join('\n');
-
+function buildKnowledgePrompt(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  type: KnowledgeType,
+  context: string,
+): { system: string; user: string } {
+  const system = t('admin.prompt.knowledge.system');
   const format = type === 'errors' ? 'JSON' : 'Markdown';
-  const user = [
-    `Tipo: ${type}`,
-    `Formato: ${format}`,
-    'Seja objetivo, com estrutura consistente.',
-    context,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const user = t('admin.prompt.knowledge.user', {
+    type,
+    format,
+    context: context || t('admin.prompt.context.none'),
+  });
   return { system, user };
 }
 
-function buildConfigSummary(): string {
+function buildConfigSummary(t: (key: string, vars?: Record<string, string | number>) => string): string {
   const poeEnabled =
     env.poeEnabled === undefined ? (env.poeApiKey ? 'true' : 'false') : env.poeEnabled ? 'true' : 'false';
   return [
-    `GEMINI_API_KEY: ${formatKeyStatus(env.geminiApiKey)}`,
-    `GROQ_API_KEY: ${formatKeyStatus(env.groqApiKey)}`,
-    `POE_API_KEY: ${formatKeyStatus(env.poeApiKey)}`,
-    `POE_ENABLED: ${poeEnabled}`,
-    `GEMINI_MODEL: ${env.geminiModel || 'n/d'}`,
-    `GROQ_MODEL_FAST: ${env.groqModelFast || 'n/d'}`,
-    `GROQ_MODEL_SMART: ${env.groqModelSmart || 'n/d'}`,
-    `POE_MODEL: ${env.poeModel || 'auto'}`,
-    `LLM_PRIMARY: ${env.llmPrimary}`,
-    `LLM_TIMEOUT_MS: ${env.llmTimeoutMs}`,
-    `LLM_COOLDOWN_MS: ${env.llmCooldownMs}`,
-    `LLM_CACHE_TTL_MS: ${env.llmCacheTtlMs}`,
-    `LLM_MAX_OUTPUT_TOKENS_SHORT: ${env.llmMaxOutputTokensShort}`,
-    `LLM_MAX_OUTPUT_TOKENS_LONG: ${env.llmMaxOutputTokensLong}`,
+    t('admin.config.line', { key: 'GEMINI_API_KEY', value: formatKeyStatus(t, env.geminiApiKey) }),
+    t('admin.config.line', { key: 'GROQ_API_KEY', value: formatKeyStatus(t, env.groqApiKey) }),
+    t('admin.config.line', { key: 'POE_API_KEY', value: formatKeyStatus(t, env.poeApiKey) }),
+    t('admin.config.line', { key: 'POE_ENABLED', value: poeEnabled }),
+    t('admin.config.line', { key: 'GEMINI_MODEL', value: env.geminiModel || t('admin.config.na') }),
+    t('admin.config.line', { key: 'GROQ_MODEL_FAST', value: env.groqModelFast || t('admin.config.na') }),
+    t('admin.config.line', { key: 'GROQ_MODEL_SMART', value: env.groqModelSmart || t('admin.config.na') }),
+    t('admin.config.line', { key: 'POE_MODEL', value: env.poeModel || t('admin.config.auto') }),
+    t('admin.config.line', { key: 'LLM_PRIMARY', value: env.llmPrimary }),
+    t('admin.config.line', { key: 'LLM_TIMEOUT_MS', value: env.llmTimeoutMs }),
+    t('admin.config.line', { key: 'LLM_COOLDOWN_MS', value: env.llmCooldownMs }),
+    t('admin.config.line', { key: 'LLM_CACHE_TTL_MS', value: env.llmCacheTtlMs }),
+    t('admin.config.line', { key: 'LLM_MAX_OUTPUT_TOKENS_SHORT', value: env.llmMaxOutputTokensShort }),
+    t('admin.config.line', { key: 'LLM_MAX_OUTPUT_TOKENS_LONG', value: env.llmMaxOutputTokensLong }),
   ].join('\n');
 }
 
-function truncateDb(target: TruncateTarget): { tables: string[]; changes: number } | { error: string } {
+function truncateDb(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  target: TruncateTarget,
+): { tables: string[]; changes: number } | { error: string } {
   if (!isDbAvailable()) {
-    return { error: 'DB indisponivel' };
+    return { error: t('admin.truncate.error.db_unavailable') };
   }
   const db = getDb();
   if (!db) {
-    return { error: 'DB indisponivel' };
+    return { error: t('admin.truncate.error.db_unavailable') };
   }
 
   const tables = TRUNCATE_TABLES[target];
   if (!tables?.length) {
-    return { error: 'Alvo invalido' };
+    return { error: t('admin.truncate.error.invalid_target') };
   }
 
   const run = db.transaction(() => {
@@ -277,42 +299,59 @@ function truncateDb(target: TruncateTarget): { tables: string[]; changes: number
 export const adminCommand = {
   data: new SlashCommandBuilder()
     .setName('admin')
-    .setDescription('Comandos administrativos da Suzi')
+    .setDescription(tLang('en', 'admin.command.desc'))
+    .setDescriptionLocalizations(getLocalized('admin.command.desc'))
     .addStringOption((option) =>
       option
         .setName('acao')
-        .setDescription('O que deseja fazer')
+        .setNameLocalizations(getLocalized('admin.option.action.name'))
+        .setDescription(tLang('en', 'admin.option.action.desc'))
+        .setDescriptionLocalizations(getLocalized('admin.option.action.desc'))
         .setRequired(true)
         .addChoices(...ACTION_CHOICES),
     )
     .addStringOption((option) =>
-      option.setName('codigo').setDescription('Codigo do erro').setRequired(false).setMaxLength(80),
+      option
+        .setName('codigo')
+        .setNameLocalizations(getLocalized('admin.option.code.name'))
+        .setDescription(tLang('en', 'admin.option.code.desc'))
+        .setDescriptionLocalizations(getLocalized('admin.option.code.desc'))
+        .setRequired(false)
+        .setMaxLength(80),
     )
     .addStringOption((option) =>
       option
         .setName('contexto')
-        .setDescription('Trecho seguro de contexto (sem chaves)')
+        .setNameLocalizations(getLocalized('admin.option.context.name'))
+        .setDescription(tLang('en', 'admin.option.context.desc'))
+        .setDescriptionLocalizations(getLocalized('admin.option.context.desc'))
         .setRequired(false)
         .setMaxLength(800),
     )
     .addStringOption((option) =>
       option
         .setName('type')
-        .setDescription('Tipo de knowledge')
+        .setNameLocalizations(getLocalized('admin.option.type.name'))
+        .setDescription(tLang('en', 'admin.option.type.desc'))
+        .setDescriptionLocalizations(getLocalized('admin.option.type.desc'))
         .setRequired(false)
         .addChoices(...KNOWLEDGE_CHOICES),
     )
     .addStringOption((option) =>
       option
         .setName('alvo')
-        .setDescription('Qual dado deve ser limpo')
+        .setNameLocalizations(getLocalized('admin.option.target.name'))
+        .setDescription(tLang('en', 'admin.option.target.desc'))
+        .setDescriptionLocalizations(getLocalized('admin.option.target.desc'))
         .setRequired(false)
         .addChoices(...TRUNCATE_CHOICES),
     )
     .addBooleanOption((option) =>
       option
         .setName('confirmar')
-        .setDescription('Confirma a limpeza dos dados')
+        .setNameLocalizations(getLocalized('admin.option.confirm.name'))
+        .setDescription(tLang('en', 'admin.option.confirm.desc'))
+        .setDescriptionLocalizations(getLocalized('admin.option.confirm.desc'))
         .setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
@@ -321,7 +360,9 @@ export const adminCommand = {
       return;
     }
 
-    if (!(await ensureAdmin(interaction))) {
+    const t = getTranslator(interaction.guildId);
+
+    if (!(await ensureAdmin(interaction, t))) {
       return;
     }
 
@@ -332,8 +373,8 @@ export const adminCommand = {
         const code = interaction.options.getString('codigo')?.trim();
         if (!code) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Informe o codigo')
-            .setDescription('Use /admin acao:logs_explain codigo:<SUZI-XXX>.');
+            .setTitle(t('admin.logs.missing_code.title'))
+            .setDescription(t('admin.logs.missing_code.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -342,7 +383,7 @@ export const adminCommand = {
         const context = sanitizeContext(rawContext);
 
         const cached = getExplainCache(code);
-        const prompt = buildExplainPrompt(code, context);
+        const prompt = buildExplainPrompt(t, code, context);
         const responseText =
           cached ??
           (await askAdmin({
@@ -361,18 +402,18 @@ export const adminCommand = {
 
         const sections = parseExplainSections(responseText);
         const embed = createSuziEmbed('primary')
-          .setTitle(`${EMOJI_TOOL} Explicacao de Log`)
-          .setDescription(`Codigo: ${code}`);
+          .setTitle(`${EMOJI_TOOL} ${t('admin.logs.title')}`)
+          .setDescription(t('admin.logs.desc', { code }));
 
         if (sections.explanation || sections.cause || sections.fix || sections.prevention) {
           embed.addFields(
-            { name: 'Explicacao', value: safeText(sections.explanation ?? responseText, 512) },
-            { name: 'Causa provavel', value: safeText(sections.cause ?? '-', 512) },
-            { name: 'Passos de correcao', value: safeText(sections.fix ?? '-', 512) },
-            { name: 'Prevencao', value: safeText(sections.prevention ?? '-', 512) },
+            { name: t('admin.logs.field.explanation'), value: safeText(sections.explanation ?? responseText, 512) },
+            { name: t('admin.logs.field.cause'), value: safeText(sections.cause ?? '-', 512) },
+            { name: t('admin.logs.field.fix'), value: safeText(sections.fix ?? '-', 512) },
+            { name: t('admin.logs.field.prevention'), value: safeText(sections.prevention ?? '-', 512) },
           );
         } else {
-          embed.addFields({ name: 'Detalhes', value: safeText(responseText, 1024) });
+          embed.addFields({ name: t('admin.logs.field.details'), value: safeText(responseText, 1024) });
         }
 
         await safeRespond(interaction, { embeds: [embed] });
@@ -380,8 +421,8 @@ export const adminCommand = {
       }
 
       if (action === 'config_audit') {
-        const summary = buildConfigSummary();
-        const prompt = buildAuditPrompt(summary);
+        const summary = buildConfigSummary(t);
+        const prompt = buildAuditPrompt(t, summary);
         const result = await askAdmin({
           useCase: 'ADMIN_MONITOR',
           messages: [
@@ -393,9 +434,9 @@ export const adminCommand = {
         });
 
         const embed = createSuziEmbed('primary')
-          .setTitle(`${EMOJI_COMPASS} Config Audit`)
-          .setDescription('Checklist baseado no estado atual')
-          .addFields({ name: 'Checklist', value: safeText(result.text, 1024) });
+          .setTitle(`${EMOJI_COMPASS} ${t('admin.config.title')}`)
+          .setDescription(t('admin.config.desc'))
+          .addFields({ name: t('admin.config.checklist'), value: safeText(result.text, 1024) });
 
         await safeRespond(interaction, { embeds: [embed] });
         return;
@@ -405,8 +446,8 @@ export const adminCommand = {
         const type = interaction.options.getString('type') as KnowledgeType | null;
         if (!type) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Informe o type')
-            .setDescription('Use /admin acao:knowledge_build type:<errors|tutorial|help|lore>.');
+            .setTitle(t('admin.knowledge.missing_type.title'))
+            .setDescription(t('admin.knowledge.missing_type.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -415,13 +456,13 @@ export const adminCommand = {
         const cooldown = isKnowledgeCooldownActive(cooldownKey);
         if (!cooldown.ok) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Cooldown ativo')
-            .setDescription(`Aguarde ${cooldown.wait}s para gerar novamente.`);
+            .setTitle(t('admin.knowledge.cooldown.title'))
+            .setDescription(t('admin.knowledge.cooldown.desc', { wait: cooldown.wait }));
           await safeRespond(interaction, { embeds: [embed] }, true);
           return;
         }
 
-        const prompt = buildKnowledgePrompt(type, '');
+        const prompt = buildKnowledgePrompt(t, type, '');
         const result = await askAdmin({
           useCase: 'ADMIN_TEMPLATES',
           messages: [
@@ -449,9 +490,9 @@ export const adminCommand = {
         }
 
         const embed = createSuziEmbed('success')
-          .setTitle(`${EMOJI_BOOKS} Knowledge gerado`)
-          .setDescription(`Arquivo salvo: ${safeText(outputPath, 1024)}`)
-          .addFields({ name: 'Resumo', value: safeText(result.text, 512) });
+          .setTitle(`${EMOJI_BOOKS} ${t('admin.knowledge.generated.title')}`)
+          .setDescription(t('admin.knowledge.generated.desc', { path: safeText(outputPath, 1024) }))
+          .addFields({ name: t('admin.knowledge.generated.summary'), value: safeText(result.text, 512) });
 
         await safeRespond(interaction, { embeds: [embed] });
         return;
@@ -461,8 +502,8 @@ export const adminCommand = {
         const target = interaction.options.getString('alvo') as TruncateTarget | null;
         if (!target) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Informe o alvo')
-            .setDescription('Use /admin acao:truncate alvo:<reviews|rolls|history|questions|steam|profiles|all>.');
+            .setTitle(t('admin.truncate.missing_target.title'))
+            .setDescription(t('admin.truncate.missing_target.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -470,27 +511,27 @@ export const adminCommand = {
         const confirm = interaction.options.getBoolean('confirmar') ?? false;
         if (!confirm) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Confirmacao obrigatoria')
-            .setDescription('Use confirmar:true para executar a limpeza.');
+            .setTitle(t('admin.truncate.confirm_required.title'))
+            .setDescription(t('admin.truncate.confirm_required.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
-        const result = truncateDb(target);
+        const result = truncateDb(t, target);
         if ('error' in result) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Nao consegui limpar')
+            .setTitle(t('admin.truncate.failed.title'))
             .setDescription(result.error);
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
         const embed = createSuziEmbed('success')
-          .setTitle(`${EMOJI_BROOM} Dados limpos`)
-          .setDescription(`Alvo: ${target}`)
+          .setTitle(`${EMOJI_BROOM} ${t('admin.truncate.success.title')}`)
+          .setDescription(t('admin.truncate.success.desc', { target }))
           .addFields(
-            { name: 'Tabelas', value: safeText(result.tables.join(', '), 1024) },
-            { name: 'Registros removidos', value: String(result.changes) },
+            { name: t('admin.truncate.success.tables'), value: safeText(result.tables.join(', '), 1024) },
+            { name: t('admin.truncate.success.records'), value: String(result.changes) },
           );
 
         await safeRespond(interaction, { embeds: [embed] });
@@ -499,8 +540,8 @@ export const adminCommand = {
     } catch (error) {
       logError('SUZI-ADMIN-001', error, { message: 'Erro no comando /admin', action });
       const embed = createSuziEmbed('warning')
-        .setTitle('Nao consegui completar')
-        .setDescription('Tente novamente em instantes.');
+        .setTitle(t('admin.error.title'))
+        .setDescription(t('admin.error.desc'));
       await safeRespond(interaction, { embeds: [embed] });
     }
   },

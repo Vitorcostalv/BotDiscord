@@ -1,15 +1,17 @@
-﻿import type { ErrorCode } from '../errors/catalog.js';
+import type { ErrorCode } from '../errors/catalog.js';
+import { t } from '../i18n/index.js';
 
-const WARNING = '\u26A0\uFE0F';
-
-const PUBLIC_MESSAGES: Partial<Record<ErrorCode, string>> = {
-  'SUZI-ROLL-001':
-    `${WARNING} [SUZI-ROLL-001] Expressao invalida. Use NdM entre 1d2 e 100d100. Ex: 2d20.`,
-  'SUZI-CMD-001': `${WARNING} [SUZI-CMD-001] Parametro invalido. Revise as opcoes do comando.`,
-  'SUZI-DISCORD-002': `${WARNING} [SUZI-DISCORD-002] Falta permissao para executar essa acao.`,
-  'SUZI-DISCORD-003': `${WARNING} [SUZI-DISCORD-003] Nao tenho acesso ao canal para responder.`,
+const ERROR_KEYS: Partial<Record<ErrorCode, string>> = {
+  'SUZI-ROLL-001': 'errors.SUZI-ROLL-001',
+  'SUZI-CMD-001': 'errors.SUZI-CMD-001',
+  'SUZI-DISCORD-002': 'errors.SUZI-DISCORD-002',
+  'SUZI-DISCORD-003': 'errors.SUZI-DISCORD-003',
 };
 
-export function toPublicMessage(code: ErrorCode): string {
-  return PUBLIC_MESSAGES[code] ?? `${WARNING} deu ruim aqui, tenta de novo`;
+export function toPublicMessage(code: ErrorCode, guildId?: string | null): string {
+  const key = ERROR_KEYS[code];
+  if (!key) {
+    return t(guildId, 'errors.generic');
+  }
+  return t(guildId, key);
 }

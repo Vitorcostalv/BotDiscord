@@ -7,6 +7,24 @@ import { clamp, drawBullets, drawCover, drawParagraph, drawRoundedRect, getCache
 
 export type ProfileCardPage = 'profile' | 'achievements' | 'history' | 'reviews';
 
+export type ProfileCardLabels = {
+  pageLabels: Record<ProfileCardPage, string>;
+  progressTitle: string;
+  levelLine: string;
+  xpLine: string;
+  favoritesTitle: string;
+  favoritesEmpty: string;
+  achievementsTitle: string;
+  achievementsTotal: string;
+  achievementsEmpty: string;
+  historyTitle: string;
+  historyEmpty: string;
+  reviewsTitle: string;
+  reviewsTotal: string;
+  reviewsEmpty: string;
+  categoryLabels: Record<ReviewCategory, string>;
+};
+
 export type ProfileCardFavorite = {
   type: ReviewMediaType;
   name: string;
@@ -48,6 +66,7 @@ export type ProfileCardData = {
   history: ProfileCardHistory[];
   reviews: ProfileCardReview[];
   totalReviews: number;
+  labels: ProfileCardLabels;
 };
 
 const CANVAS_WIDTH = 1000;
@@ -56,13 +75,6 @@ const CANVAS_HEIGHT = 560;
 const COLOR_TEXT = '#ffffff';
 const COLOR_MUTED = 'rgba(255, 255, 255, 0.72)';
 const COLOR_ACCENT = '#ff7adf';
-
-const PAGE_LABELS: Record<ProfileCardPage, string> = {
-  profile: 'Perfil',
-  achievements: 'Conquistas',
-  history: 'Historico',
-  reviews: 'Reviews',
-};
 
 const CATEGORY_EMOJI: Record<ReviewCategory, string> = {
   AMEI: '\u{1F496}',
@@ -142,7 +154,7 @@ function drawListLine(ctx: SKRSContext2D, text: string, x: number, y: number, ac
 function drawProfilePage(ctx: SKRSContext2D, data: ProfileCardData): void {
   const baseX = 60;
   const headerY = 200;
-  drawSectionTitle(ctx, 'Progresso com a Suzi', baseX, headerY);
+  drawSectionTitle(ctx, data.labels.progressTitle, baseX, headerY);
 
   const barX = baseX;
   const barY = headerY + 18;
@@ -159,22 +171,17 @@ function drawProfilePage(ctx: SKRSContext2D, data: ProfileCardData): void {
 
   ctx.fillStyle = COLOR_MUTED;
   ctx.font = '16px "Inter", "Segoe UI", "Arial", sans-serif';
-  const xpNeeded = Math.max(1, Math.round(data.xpNeeded));
-  ctx.fillText(`Nivel ${data.level}`, barX, barY + 36);
-  ctx.fillText(
-    `XP ${Math.round(data.xpCurrent)}/${xpNeeded} (${Math.round(data.xpPercent)}%)`,
-    barX + 120,
-    barY + 36,
-  );
+  ctx.fillText(data.labels.levelLine, barX, barY + 36);
+  ctx.fillText(data.labels.xpLine, barX + 120, barY + 36);
 
   const favHeaderY = headerY + 90;
-  drawSectionTitle(ctx, 'Favoritos', baseX, favHeaderY);
+  drawSectionTitle(ctx, data.labels.favoritesTitle, baseX, favHeaderY);
   const listY = favHeaderY + 26;
 
   if (!data.favorites.length) {
     ctx.fillStyle = COLOR_MUTED;
     ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
-    ctx.fillText('Sem favoritos ainda', baseX, listY);
+    ctx.fillText(data.labels.favoritesEmpty, baseX, listY);
     return;
   }
 
@@ -193,12 +200,12 @@ function drawAchievementsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   const titleLineHeight = 28;
   const gap = 12;
 
-  drawSectionTitle(ctx, 'Conquistas', baseX, titleY);
+  drawSectionTitle(ctx, data.labels.achievementsTitle, baseX, titleY);
   let cursorY = titleY + titleLineHeight;
 
   ctx.font = '16px "Inter", "Segoe UI", "Arial", sans-serif';
   const totalLine = drawParagraph(ctx, {
-    text: `Total desbloqueadas: ${data.totalAchievements}`,
+    text: data.labels.achievementsTotal,
     x: baseX,
     y: cursorY,
     maxWidth: contentWidth,
@@ -210,7 +217,7 @@ function drawAchievementsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   if (!data.achievements.length) {
     ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
     drawParagraph(ctx, {
-      text: 'Nenhuma conquista desbloqueada',
+      text: data.labels.achievementsEmpty,
       x: baseX,
       y: cursorY,
       maxWidth: contentWidth,
@@ -237,13 +244,13 @@ function drawAchievementsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
 function drawHistoryPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   const baseX = 60;
   const headerY = 200;
-  drawSectionTitle(ctx, 'Historico de Rolagens', baseX, headerY);
+  drawSectionTitle(ctx, data.labels.historyTitle, baseX, headerY);
 
   const listY = headerY + 30;
   if (!data.history.length) {
     ctx.fillStyle = COLOR_MUTED;
     ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
-    ctx.fillText('Sem rolagens registradas ainda', baseX, listY);
+    ctx.fillText(data.labels.historyEmpty, baseX, listY);
     return;
   }
 
@@ -257,23 +264,24 @@ function drawHistoryPage(ctx: SKRSContext2D, data: ProfileCardData): void {
 function drawReviewsPage(ctx: SKRSContext2D, data: ProfileCardData): void {
   const baseX = 60;
   const headerY = 200;
-  drawSectionTitle(ctx, 'Reviews', baseX, headerY);
+  drawSectionTitle(ctx, data.labels.reviewsTitle, baseX, headerY);
 
   ctx.fillStyle = COLOR_MUTED;
   ctx.font = '16px "Inter", "Segoe UI", "Arial", sans-serif';
-  ctx.fillText(`Total de reviews: ${data.totalReviews}`, baseX, headerY + 24);
+  ctx.fillText(data.labels.reviewsTotal, baseX, headerY + 24);
 
   const listY = headerY + 52;
   if (!data.reviews.length) {
     ctx.fillStyle = COLOR_MUTED;
     ctx.font = '18px "Inter", "Segoe UI", "Arial", sans-serif';
-    ctx.fillText('Sem reviews ainda', baseX, listY);
+    ctx.fillText(data.labels.reviewsEmpty, baseX, listY);
     return;
   }
 
   data.reviews.slice(0, 5).forEach((entry, index) => {
     const prefix = entry.favorite ? '\u2605 ' : '';
-    const line = `${prefix}${safeText(entry.name, 30)} - ${formatStars(entry.stars)} (${entry.category}) ${
+    const categoryLabel = data.labels.categoryLabels[entry.category] ?? entry.category;
+    const line = `${prefix}${safeText(entry.name, 30)} - ${formatStars(entry.stars)} (${categoryLabel}) ${
       TYPE_BADGE[entry.type]
     }`;
     drawListLine(ctx, line, baseX, listY + index * 26, entry.favorite);
@@ -329,7 +337,7 @@ export async function renderProfileCard(data: ProfileCardData): Promise<Buffer> 
 
   ctx.fillStyle = COLOR_ACCENT;
   ctx.font = '20px "Inter", "Segoe UI", "Arial", sans-serif';
-  ctx.fillText(PAGE_LABELS[data.page], nameX, nameY + 30);
+  ctx.fillText(data.labels.pageLabels[data.page], nameX, nameY + 30);
 
   switch (data.page) {
     case 'profile':

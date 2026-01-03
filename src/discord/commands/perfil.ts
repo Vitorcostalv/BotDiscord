@@ -12,8 +12,10 @@ import {
 
 import { getUserAchievements, listAllAchievements, trackEvent } from '../../achievements/service.js';
 import { env } from '../../config/env.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { isCanvasReady, getCanvasInitError } from '../../render/canvasState.js';
-import { renderProfileCard, type ProfileCardPage } from '../../render/profileCard.js';
+import { renderProfileCard, type ProfileCardLabels, type ProfileCardPage } from '../../render/profileCard.js';
+import { getGuildLanguage, type GuildLanguage } from '../../services/guildSettingsService.js';
 import { clearProfileBanner, getPlayerProfile, setProfileBanner } from '../../services/profileService.js';
 import { getUserReviewCount, listUserReviews } from '../../services/reviewService.js';
 import { getUserRolls } from '../../services/rollHistoryService.js';
@@ -28,11 +30,11 @@ type ProfilePage = ProfileCardPage;
 type BannerAction = 'set' | 'clear';
 
 const BANNER_ALLOWED_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-const PAGE_LABELS: Record<ProfilePage, { label: string; index: number; fileKey: string }> = {
-  profile: { label: 'Perfil', index: 1, fileKey: 'perfil' },
-  achievements: { label: 'Conquistas', index: 2, fileKey: 'conquistas' },
-  history: { label: 'Historico', index: 3, fileKey: 'historico' },
-  reviews: { label: 'Reviews', index: 4, fileKey: 'reviews' },
+const PAGE_META: Record<ProfilePage, { labelKey: string; index: number; fileKey: string }> = {
+  profile: { labelKey: 'profile.page.profile', index: 1, fileKey: 'perfil' },
+  achievements: { labelKey: 'profile.page.achievements', index: 2, fileKey: 'conquistas' },
+  history: { labelKey: 'profile.page.history', index: 3, fileKey: 'historico' },
+  reviews: { labelKey: 'profile.page.reviews', index: 4, fileKey: 'reviews' },
 };
 
 function safeText(text: string, maxLen: number): string {
@@ -43,27 +45,27 @@ function safeText(text: string, maxLen: number): string {
   return `${normalized.slice(0, sliceEnd).trimEnd()}...`;
 }
 
-function formatRelativeTime(ts: number): string {
+function formatRelativeTime(ts: number, lang: GuildLanguage, t: (key: string, vars?: Record<string, string | number>) => string): string {
   const diffMs = Math.max(0, Date.now() - ts);
   if (diffMs < 60_000) {
-    return 'ha 1m';
+    return t('profile.relative.now');
   }
   const minutes = Math.floor(diffMs / 60_000);
   if (minutes < 60) {
-    return `ha ${minutes}m`;
+    return t('profile.relative.minutes', { value: minutes });
   }
   const hours = Math.floor(diffMs / 3_600_000);
   if (hours < 24) {
-    return `ha ${hours}h`;
+    return t('profile.relative.hours', { value: hours });
   }
   const days = Math.floor(diffMs / 86_400_000);
   if (days < 7) {
-    return `ha ${days}d`;
+    return t('profile.relative.days', { value: days });
   }
   const date = new Date(ts);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${day}/${month}`;
+  const locale = lang === 'pt' ? 'pt-BR' : 'en-US';
+  const dateText = date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
+  return t('profile.relative.date', { date: dateText });
 }
 
 function resolveBanner(profileBanner?: string | null): string | null {
@@ -73,16 +75,19 @@ function resolveBanner(profileBanner?: string | null): string | null {
   return fallback ? fallback.trim() : null;
 }
 
-function validateBannerUrl(input: string): { ok: true; url: string } | { ok: false; message: string } {
+function validateBannerUrl(
+  input: string,
+  t: (key: string) => string,
+): { ok: true; url: string } | { ok: false; message: string } {
   let url: URL;
   try {
     url = new URL(input.trim());
   } catch {
-    return { ok: false, message: 'URL invalida. Use um link http/https.' };
+    return { ok: false, message: t('profile.banner.invalid_url') };
   }
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return { ok: false, message: 'Use um link http/https valido.' };
+    return { ok: false, message: t('profile.banner.invalid_protocol') };
   }
 
   const pathname = url.pathname.toLowerCase();
@@ -90,7 +95,7 @@ function validateBannerUrl(input: string): { ok: true; url: string } | { ok: fal
   if (!hasExtension) {
     return {
       ok: false,
-      message: 'Use um link direto para imagem (.png, .jpg, .gif, .webp).',
+      message: t('profile.banner.invalid_extension'),
     };
   }
 
@@ -98,37 +103,38 @@ function validateBannerUrl(input: string): { ok: true; url: string } | { ok: fal
 }
 
 function buildProfileButtons(
+  t: (key: string) => string,
   active: ProfilePage,
   disabled = false,
   disableActive = true,
 ): ActionRowBuilder<ButtonBuilder> {
   const profile = new ButtonBuilder()
     .setCustomId('perfil:profile')
-    .setLabel('Perfil')
+    .setLabel(t('profile.button.profile'))
     .setStyle(active === 'profile' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     .setDisabled(disabled || (disableActive && active === 'profile'));
 
   const achievements = new ButtonBuilder()
     .setCustomId('perfil:achievements')
-    .setLabel('Conquistas')
+    .setLabel(t('profile.button.achievements'))
     .setStyle(active === 'achievements' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     .setDisabled(disabled || (disableActive && active === 'achievements'));
 
   const history = new ButtonBuilder()
     .setCustomId('perfil:history')
-    .setLabel('Historico')
+    .setLabel(t('profile.button.history'))
     .setStyle(active === 'history' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     .setDisabled(disabled || (disableActive && active === 'history'));
 
   const reviews = new ButtonBuilder()
     .setCustomId('perfil:reviews')
-    .setLabel('Reviews')
+    .setLabel(t('profile.button.reviews'))
     .setStyle(active === 'reviews' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     .setDisabled(disabled || (disableActive && active === 'reviews'));
 
   const close = new ButtonBuilder()
     .setCustomId('perfil:close')
-    .setLabel('Fechar')
+    .setLabel(t('profile.button.close'))
     .setStyle(ButtonStyle.Danger)
     .setDisabled(disabled);
 
@@ -146,23 +152,47 @@ function resolvePage(customId: string): ProfilePage | null {
 export const perfilCommand = {
   data: new SlashCommandBuilder()
     .setName('perfil')
-    .setDescription('Mostra o perfil do player')
-    .addUserOption((option) => option.setName('user').setDescription('Jogador alvo').setRequired(false))
+    .setDescription(tLang('en', 'profile.command.desc'))
+    .setDescriptionLocalizations(getLocalized('profile.command.desc'))
+    .addUserOption((option) =>
+      option
+        .setName('user')
+        .setDescription(tLang('en', 'profile.option.user'))
+        .setDescriptionLocalizations(getLocalized('profile.option.user'))
+        .setRequired(false),
+    )
     .addBooleanOption((option) =>
-      option.setName('detalhado').setDescription('Mostra informacoes completas').setRequired(false),
+      option
+        .setName('detalhado')
+        .setDescription(tLang('en', 'profile.option.detail'))
+        .setDescriptionLocalizations(getLocalized('profile.option.detail'))
+        .setRequired(false),
     )
     .addStringOption((option) =>
       option
         .setName('banner')
-        .setDescription('Ajusta o banner do perfil')
+        .setDescription(tLang('en', 'profile.option.banner'))
+        .setDescriptionLocalizations(getLocalized('profile.option.banner'))
         .setRequired(false)
         .addChoices(
-          { name: 'set', value: 'set' },
-          { name: 'clear', value: 'clear' },
+          {
+            name: tLang('en', 'profile.option.banner.set'),
+            name_localizations: getLocalized('profile.option.banner.set'),
+            value: 'set',
+          },
+          {
+            name: tLang('en', 'profile.option.banner.clear'),
+            name_localizations: getLocalized('profile.option.banner.clear'),
+            value: 'clear',
+          },
         ),
     )
     .addStringOption((option) =>
-      option.setName('url').setDescription('URL do banner (http/https)').setRequired(false),
+      option
+        .setName('url')
+        .setDescription(tLang('en', 'profile.option.banner.url'))
+        .setDescriptionLocalizations(getLocalized('profile.option.banner.url'))
+        .setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
@@ -170,6 +200,8 @@ export const perfilCommand = {
       return;
     }
 
+    const t = getTranslator(interaction.guildId);
+    const lang = getGuildLanguage(interaction.guildId);
     const target = interaction.options.getUser('user') ?? interaction.user;
     const bannerAction = interaction.options.getString('banner') as BannerAction | null;
     const bannerUrl = interaction.options.getString('url');
@@ -177,7 +209,7 @@ export const perfilCommand = {
     try {
       const profile = getPlayerProfile(target.id, interaction.guildId ?? null);
       if (!profile) {
-        const embed = buildMissingProfileEmbed(target);
+        const embed = buildMissingProfileEmbed(t, target);
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
@@ -185,8 +217,8 @@ export const perfilCommand = {
       if (bannerAction) {
         if (target.id !== interaction.user.id) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Banner indisponivel')
-            .setDescription('Voce so pode editar o seu proprio banner.');
+            .setTitle(t('profile.banner.only_self.title'))
+            .setDescription(t('profile.banner.only_self.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -194,15 +226,15 @@ export const perfilCommand = {
         if (bannerAction === 'set') {
           if (!bannerUrl) {
             const embed = createSuziEmbed('warning')
-              .setTitle('Informe o banner')
-              .setDescription('Use /perfil banner:set url:<link para imagem>.');
+              .setTitle(t('profile.banner.missing.title'))
+              .setDescription(t('profile.banner.missing.desc'));
             await safeRespond(interaction, { embeds: [embed] });
             return;
           }
-          const validation = validateBannerUrl(bannerUrl);
+          const validation = validateBannerUrl(bannerUrl, t);
           if (!validation.ok) {
             const embed = createSuziEmbed('warning')
-              .setTitle('URL invalida')
+              .setTitle(t('profile.banner.invalid.title'))
               .setDescription(validation.message);
             await safeRespond(interaction, { embeds: [embed] });
             return;
@@ -215,14 +247,14 @@ export const perfilCommand = {
           );
           if (!updated) {
             const embed = createSuziEmbed('warning')
-              .setTitle('Nao consegui salvar')
-              .setDescription('Registre seu perfil com /register antes de ajustar o banner.');
+              .setTitle(t('profile.banner.save_failed.title'))
+              .setDescription(t('profile.banner.save_failed.desc'));
             await safeRespond(interaction, { embeds: [embed] });
             return;
           }
           const embed = createSuziEmbed('success')
-            .setTitle('Banner atualizado')
-            .setDescription('Seu banner foi salvo.');
+            .setTitle(t('profile.banner.updated.title'))
+            .setDescription(t('profile.banner.updated.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -231,14 +263,14 @@ export const perfilCommand = {
           const updated = clearProfileBanner(interaction.user.id, interaction.user.id, interaction.guildId ?? null);
           if (!updated) {
             const embed = createSuziEmbed('warning')
-              .setTitle('Nao consegui remover')
-              .setDescription('Registre seu perfil com /register antes de ajustar o banner.');
+              .setTitle(t('profile.banner.clear_failed.title'))
+              .setDescription(t('profile.banner.clear_failed.desc'));
             await safeRespond(interaction, { embeds: [embed] });
             return;
           }
           const embed = createSuziEmbed('success')
-            .setTitle('Banner removido')
-            .setDescription('Voltando para o banner padrao.');
+            .setTitle(t('profile.banner.cleared.title'))
+            .setDescription(t('profile.banner.cleared.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -256,7 +288,7 @@ export const perfilCommand = {
       const historyEntries = rolls.map((entry) => ({
         expr: entry.expr,
         total: entry.total,
-        when: formatRelativeTime(entry.ts),
+        when: formatRelativeTime(entry.ts, lang, t),
       }));
 
       const guildId = interaction.guildId;
@@ -288,6 +320,39 @@ export const perfilCommand = {
       const banner = resolveBanner(profile.bannerUrl);
       const avatarUrl = target.displayAvatarURL({ size: 256, extension: 'png' });
 
+      const categoryLabels: ProfileCardLabels['categoryLabels'] = {
+        AMEI: t('labels.category.amei'),
+        JOGAVEL: t('labels.category.jogavel'),
+        RUIM: t('labels.category.ruim'),
+      };
+
+      const labels: ProfileCardLabels = {
+        pageLabels: {
+          profile: t('profile.page.profile'),
+          achievements: t('profile.page.achievements'),
+          history: t('profile.page.history'),
+          reviews: t('profile.page.reviews'),
+        },
+        progressTitle: t('profile.card.progress_title'),
+        levelLine: t('profile.card.level', { level: progress.level }),
+        xpLine: t('profile.card.xp', {
+          current: Math.round(progress.current),
+          needed: Math.max(1, Math.round(progress.needed)),
+          percent: Math.round(progress.percent),
+        }),
+        favoritesTitle: t('profile.card.favorites_title'),
+        favoritesEmpty: t('profile.card.favorites_empty'),
+        achievementsTitle: t('profile.card.achievements_title'),
+        achievementsTotal: t('profile.card.achievements_total', { total: unlocked.length }),
+        achievementsEmpty: t('profile.card.achievements_empty'),
+        historyTitle: t('profile.card.history_title'),
+        historyEmpty: t('profile.card.history_empty'),
+        reviewsTitle: t('profile.card.reviews_title'),
+        reviewsTotal: t('profile.card.reviews_total', { total: totalReviews }),
+        reviewsEmpty: t('profile.card.reviews_empty'),
+        categoryLabels,
+      };
+
       const cardBase = {
         displayName,
         avatarUrl,
@@ -299,16 +364,22 @@ export const perfilCommand = {
         favorites: favoriteEntries,
         achievements: unlocked.slice(0, 6).map((definition) => ({
           emoji: definition.emoji,
-          name: definition.name,
+          name: (() => {
+            const key = `achievement.${definition.id}.name`;
+            const translated = t(key);
+            return translated === key ? definition.name : translated;
+          })(),
         })),
         totalAchievements: unlocked.length,
         history: historyEntries,
         reviews: reviewEntries,
         totalReviews,
+        labels,
       };
 
       const buildPagePayload = async (page: ProfilePage, forUpdate: boolean) => {
-        const { label, index, fileKey } = PAGE_LABELS[page];
+        const { labelKey, index, fileKey } = PAGE_META[page];
+        const label = t(labelKey);
         const fileName = `profile-${fileKey}.png`;
         let attachment: AttachmentBuilder | null = null;
         let renderError: string | null = null;
@@ -320,7 +391,7 @@ export const perfilCommand = {
         });
         try {
           if (!isCanvasReady()) {
-            renderError = 'Erro ao gerar imagem, tente novamente.';
+            renderError = t('profile.render_error');
             logWarn('SUZI-CANVAS-001', new Error('Canvas indisponivel'), {
               message: 'Canvas indisponivel para renderizar perfil',
               userId: target.id,
@@ -331,13 +402,13 @@ export const perfilCommand = {
             attachment = new AttachmentBuilder(buffer, { name: fileName });
           }
         } catch (error) {
-          renderError = 'Erro ao gerar imagem, tente novamente.';
+          renderError = t('profile.render_error');
           logWarn('SUZI-CMD-002', error, { message: 'Falha ao renderizar card do perfil', userId: target.id });
         }
 
         const embed = createSuziEmbed('primary')
-          .setTitle(`${label} - ${safeText(displayName, 64)}`)
-          .setFooter({ text: `Pagina ${index}/4 - ${label}` });
+          .setTitle(t('profile.embed.title', { page: label, name: safeText(displayName, 64) }))
+          .setFooter({ text: t('profile.embed.footer', { index, total: 4, page: label }) });
         if (renderError) {
           embed.setDescription(renderError);
         }
@@ -353,7 +424,7 @@ export const perfilCommand = {
           components: ActionRowBuilder<ButtonBuilder>[];
           files?: AttachmentBuilder[];
           attachments?: [];
-        } = { embeds: [embed], components: [buildProfileButtons(page)] };
+        } = { embeds: [embed], components: [buildProfileButtons(t, page)] };
 
         if (attachment) {
           payload.files = [attachment];
@@ -390,21 +461,21 @@ export const perfilCommand = {
 
           if (button.user.id !== interaction.user.id) {
             await button.reply({
-              content: 'So quem abriu o perfil pode navegar.',
+              content: t('profile.button.only_author'),
               ephemeral: true,
             });
             return;
           }
 
           if (button.customId === 'perfil:close') {
-            await button.update({ components: [buildProfileButtons(currentPage, true)] });
+            await button.update({ components: [buildProfileButtons(t, currentPage, true)] });
             collector.stop('closed');
             return;
           }
 
           const nextPage = resolvePage(button.customId);
           if (!nextPage) {
-            await button.reply({ content: 'Botao invalido.', ephemeral: true });
+            await button.reply({ content: t('profile.button.invalid'), ephemeral: true });
             return;
           }
 
@@ -416,7 +487,7 @@ export const perfilCommand = {
         collector.on('end', async () => {
           if (!message) return;
           try {
-            await message.edit({ components: [buildProfileButtons(currentPage, true)] });
+            await message.edit({ components: [buildProfileButtons(t, currentPage, true)] });
           } catch (error) {
             logWarn('SUZI-DISCORD-001', error, { message: 'Falha ao desabilitar botoes do /perfil' });
           }
@@ -426,7 +497,7 @@ export const perfilCommand = {
       try {
         const { unlocked: unlockedTitles } = trackEvent(interaction.user.id, 'perfil');
         unlockTitlesFromAchievements(interaction.user.id, unlockedTitles);
-        const unlockEmbed = buildAchievementUnlockEmbed(unlockedTitles);
+        const unlockEmbed = buildAchievementUnlockEmbed(t, unlockedTitles);
         if (unlockEmbed) {
           await safeRespond(interaction, { embeds: [unlockEmbed] });
         }
@@ -435,7 +506,7 @@ export const perfilCommand = {
       }
     } catch (error) {
       logError('SUZI-CMD-002', error, { message: 'Erro no comando /perfil' });
-      await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
+      await safeRespond(interaction, toPublicMessage('SUZI-CMD-002', interaction.guildId));
     }
   },
 };

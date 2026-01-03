@@ -188,5 +188,12 @@ export function migrate(db: Database.Database): void {
       count_total INTEGER NOT NULL,
       PRIMARY KEY (scope, scope_id)
     );
+
+    CREATE TABLE IF NOT EXISTS guild_settings (
+      guild_id TEXT NOT NULL PRIMARY KEY,
+      language TEXT NOT NULL CHECK(language IN ('en','pt')),
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT NOT NULL
+    );
   `);
 }

@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { trackEvent } from '../../achievements/service.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { parseDice, rollDice } from '../../services/dice.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro } from '../../services/profileService.js';
@@ -17,7 +18,6 @@ const EMOJI_DICE = '\u{1F3B2}';
 const EMOJI_SPARKLE = '\u2728';
 const MAX_ROLLS_DISPLAY = 30;
 const HISTORY_ROLLS_DISPLAY = 8;
-const ORDER_LABEL = 'Maior -> menor';
 
 type RollMessageResult =
   | {
@@ -31,26 +31,31 @@ type RollMessageResult =
     }
   | { ok: false; message: string };
 
-function formatRollResults(rolls: number[]): string {
+function formatRollResults(t: (key: string, vars?: Record<string, string | number>) => string, rolls: number[]): string {
   const orderedRolls = [...rolls].sort((a, b) => b - a);
   const shownRolls = orderedRolls.slice(0, MAX_ROLLS_DISPLAY);
   let results = shownRolls.join(', ');
 
   if (orderedRolls.length > MAX_ROLLS_DISPLAY) {
     const remaining = orderedRolls.length - MAX_ROLLS_DISPLAY;
-    results = `${results}, ... +${remaining} resultados`;
+    results = t('roll.results.more', { results, remaining });
   }
 
   return results;
 }
 
-function formatHistoryRoll(expression: string, rolls: number[], total: number): string {
+function formatHistoryRoll(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  expression: string,
+  rolls: number[],
+  total: number,
+): string {
   const shown = rolls.slice(0, HISTORY_ROLLS_DISPLAY);
   let results = shown.join(', ');
   if (rolls.length > HISTORY_ROLLS_DISPLAY) {
-    results = `${results}, +${rolls.length - HISTORY_ROLLS_DISPLAY}`;
+    results = t('roll.results.more_short', { results, remaining: rolls.length - HISTORY_ROLLS_DISPLAY });
   }
-  return `${expression}: ${results} (total ${total})`;
+  return t('roll.history.entry', { expression, results, total });
 }
 
 export function buildRollMessage(input: string): RollMessageResult {
@@ -63,7 +68,7 @@ export function buildRollMessage(input: string): RollMessageResult {
   const expression = `${parsed.count}d${parsed.sides}`;
   return {
     ok: true,
-    resultsText: formatRollResults(rolls),
+    resultsText: '',
     rolls,
     sides: parsed.sides,
     count: parsed.count,
@@ -75,15 +80,22 @@ export function buildRollMessage(input: string): RollMessageResult {
 export const rollCommand = {
   data: new SlashCommandBuilder()
     .setName('roll')
-    .setDescription('Role dados no formato NdM (ex: 2d20)')
+    .setDescription(tLang('en', 'roll.command.desc'))
+    .setDescriptionLocalizations(getLocalized('roll.command.desc'))
     .addStringOption((option) =>
-      option.setName('expressao').setDescription('Expressao no formato NdM (ex: 2d20)').setRequired(true),
+      option
+        .setName('expressao')
+        .setDescription(tLang('en', 'roll.option.expr'))
+        .setDescriptionLocalizations(getLocalized('roll.option.expr'))
+        .setRequired(true),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
       return;
     }
+
+    const t = getTranslator(interaction.guildId);
 
     await withCooldown(interaction, 'roll', async () => {
       const input = interaction.options.getString('expressao', true);
@@ -95,29 +107,40 @@ export const rollCommand = {
           input,
         });
         const errorEmbed = createSuziEmbed('warning')
-          .setTitle('Rolagem invalida')
-          .setDescription(toPublicMessage('SUZI-ROLL-001'));
+          .setTitle(t('roll.invalid.title'))
+          .setDescription(toPublicMessage('SUZI-ROLL-001', interaction.guildId));
         await safeRespond(interaction, { embeds: [errorEmbed] });
         return;
       }
 
-      appendProfileHistory(interaction.user.id, {
-        type: 'roll',
-        label: formatHistoryRoll(`${result.count}d${result.sides}`, result.rolls, result.total),
-      }, interaction.guildId ?? null);
+      result.resultsText = formatRollResults(t, result.rolls);
 
-      const intro = formatSuziIntro(interaction.user.id, {
-        displayName: interaction.user.globalName ?? interaction.user.username,
-        kind: 'roll',
-      }, interaction.guildId ?? null);
+      appendProfileHistory(
+        interaction.user.id,
+        {
+          type: 'roll',
+          label: formatHistoryRoll(t, `${result.count}d${result.sides}`, result.rolls, result.total),
+        },
+        interaction.guildId ?? null,
+      );
 
+      const intro = formatSuziIntro(
+        interaction.user.id,
+        {
+          displayName: interaction.user.globalName ?? interaction.user.username,
+          kind: 'roll',
+        },
+        interaction.guildId ?? null,
+      );
+
+      const orderLabel = t('roll.order_label');
       const embed = createSuziEmbed('primary')
-        .setTitle(`${EMOJI_DICE} Rolagem de Dados`)
+        .setTitle(`${EMOJI_DICE} ${t('roll.embed.title')}`)
         .addFields(
-          { name: 'Expressao', value: result.expression, inline: true },
-          { name: 'Total', value: String(result.total), inline: true },
-          { name: 'Ordem de exibicao', value: ORDER_LABEL, inline: true },
-          { name: `Resultados (${ORDER_LABEL})`, value: result.resultsText },
+          { name: t('roll.embed.expression'), value: result.expression, inline: true },
+          { name: t('roll.embed.total'), value: String(result.total), inline: true },
+          { name: t('roll.embed.order'), value: orderLabel, inline: true },
+          { name: t('roll.embed.results', { order: orderLabel }), value: result.resultsText },
         );
       if (intro) {
         embed.setDescription(intro);
@@ -147,7 +170,7 @@ export const rollCommand = {
         interaction.guildId ?? null,
       );
       if (xpResult.leveledUp) {
-        await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
+        await safeRespond(interaction, t('roll.level_up', { emoji: EMOJI_SPARKLE, level: xpResult.newLevel }));
       }
 
       try {
@@ -157,7 +180,7 @@ export const rollCommand = {
           count: result.count,
         });
         unlockTitlesFromAchievements(interaction.user.id, unlocked);
-        const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+        const unlockEmbed = buildAchievementUnlockEmbed(t, unlocked);
         if (unlockEmbed) {
           await safeRespond(interaction, { embeds: [unlockEmbed] });
         }

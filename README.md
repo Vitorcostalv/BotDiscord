@@ -18,6 +18,12 @@
 - `/sobre` - Lore da Suzi.
 - `/conquistas` - Lista conquistas do player.
 - `/ajuda` - Mostra a lista de comandos.
+- `/language set idioma:<en|pt>` - Altera o idioma do servidor inteiro.
+
+## Idioma (i18n)
+- Idioma padrao: ingles.
+- Para mudar o idioma do servidor: /language set idioma:<en|pt>.
+- A mudanca vale para todos os comandos, embeds e botoes do servidor.
 
 ## Variaveis de Ambiente
 - `DISCORD_TOKEN` (obrigatorio)
@@ -275,5 +281,8 @@ O catalogo completo fica em `src/errors/catalog.ts`.
 Notas:
 - `.env.example` e apenas referencia (se existir). Em producao use somente as variaveis do host.
 - O deploy usa `BUILD=npm ci && npm run build` e inicia com `npm start`.
+
+
+
 
 

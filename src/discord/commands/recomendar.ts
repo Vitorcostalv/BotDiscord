@@ -1,5 +1,6 @@
-﻿import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import {
   getGuildReviewSummary,
   getUserTagSummary,
@@ -37,14 +38,20 @@ function buildEmptyEmbed(title: string, description: string) {
   return createSuziEmbed('warning').setTitle(title).setDescription(description);
 }
 
-function formatTypeLabel(type: ReviewMediaType): string {
-  return type === 'MOVIE' ? 'filmes' : 'jogos';
+function formatTypeLabel(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  type: ReviewMediaType,
+): string {
+  return type === 'MOVIE' ? t('labels.movie_plural') : t('labels.game_plural');
 }
 
-function buildRecommendationLines(items: Array<{ name: string; avg: number; count: number }>): string {
+function buildRecommendationLines(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  items: Array<{ name: string; avg: number; count: number }>,
+): string {
   return items
     .map((item, index) => {
-      const countLabel = item.count === 1 ? 'avaliacao' : 'avaliacoes';
+      const countLabel = item.count === 1 ? t('review.view.vote_single') : t('review.view.vote_plural');
       return `${index + 1}) ${safeText(item.name, 40)} - ${formatStars(item.avg)} (${item.count} ${countLabel})`;
     })
     .join('\n');
@@ -53,34 +60,57 @@ function buildRecommendationLines(items: Array<{ name: string; avg: number; coun
 export const recomendarCommand = {
   data: new SlashCommandBuilder()
     .setName('recomendar')
-    .setDescription('Receba recomendacoes personalizadas')
+    .setDescription(tLang('en', 'recommend.command.desc'))
+    .setDescriptionLocalizations(getLocalized('recommend.command.desc'))
     .addStringOption((option) =>
       option
         .setName('acao')
-        .setDescription('Tipo de recomendacao')
+        .setNameLocalizations(getLocalized('recommend.option.action.name'))
+        .setDescription(tLang('en', 'recommend.option.action.desc'))
+        .setDescriptionLocalizations(getLocalized('recommend.option.action.desc'))
         .setRequired(true)
         .addChoices(
-          { name: 'jogo', value: 'jogo' },
-          { name: 'filme', value: 'filme' },
-          { name: 'tutorial', value: 'tutorial' },
+          {
+            name: tLang('en', 'recommend.action.game'),
+            name_localizations: getLocalized('recommend.action.game'),
+            value: 'jogo',
+          },
+          {
+            name: tLang('en', 'recommend.action.movie'),
+            name_localizations: getLocalized('recommend.action.movie'),
+            value: 'filme',
+          },
+          {
+            name: tLang('en', 'recommend.action.tutorial'),
+            name_localizations: getLocalized('recommend.action.tutorial'),
+            value: 'tutorial',
+          },
         ),
     )
     .addStringOption((option) =>
-      option.setName('genero').setDescription('Genero desejado (ex: romance)').setRequired(false),
+      option
+        .setName('genero')
+        .setNameLocalizations(getLocalized('recommend.option.genre.name'))
+        .setDescription(tLang('en', 'recommend.option.genre.desc'))
+        .setDescriptionLocalizations(getLocalized('recommend.option.genre.desc'))
+        .setRequired(false),
     )
     .addBooleanOption((option) =>
       option
         .setName('romance_fechado')
-        .setDescription('Somente filmes com final fechado')
+        .setNameLocalizations(getLocalized('recommend.option.romance_closed.name'))
+        .setDescription(tLang('en', 'recommend.option.romance_closed.desc'))
+        .setDescriptionLocalizations(getLocalized('recommend.option.romance_closed.desc'))
         .setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) return;
 
+    const t = getTranslator(interaction.guildId);
     const guildId = interaction.guildId;
     if (!guildId) {
-      const embed = buildEmptyEmbed('Somente em servidores', 'Use este comando dentro de um servidor.');
+      const embed = buildEmptyEmbed(t('common.server_only.title'), t('common.server_only.desc'));
       await safeRespond(interaction, { embeds: [embed] });
       return;
     }
@@ -94,15 +124,15 @@ export const recomendarCommand = {
           .map((entry) => entry.tag);
         const suggestions =
           tags.length > 0
-            ? tags.map((tag) => `Tutorial de ${tag}`)
+            ? tags.map((tag) => t('recommend.tutorial.tagged', { tag }))
             : [
-                'Tutorial de iniciacao',
-                'Guia para iniciantes',
-                'Dicas basicas para evoluir mais rapido',
+                t('recommend.tutorial.default.1'),
+                t('recommend.tutorial.default.2'),
+                t('recommend.tutorial.default.3'),
               ];
 
         const embed = createSuziEmbed('primary')
-          .setTitle(`${EMOJI_BOOK} Tutoriais sugeridos`)
+          .setTitle(`${EMOJI_BOOK} ${t('recommend.tutorial.title')}`)
           .setDescription(suggestions.map((item) => `- ${item}`).join('\n'));
         await safeRespond(interaction, { embeds: [embed] });
         return;
@@ -150,20 +180,17 @@ export const recomendarCommand = {
 
       if (!combined.length) {
         if (wantsRomanceClosed) {
-            const embed = buildEmptyEmbed(
-              'Sem filmes com final fechado',
-              'Ainda faltam avaliacoes marcadas como final fechado. Use /review add para avaliar filmes.',
-            );
+          const embed = buildEmptyEmbed(t('recommend.romance_closed.title'), t('recommend.romance_closed.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
         const summary = getGuildReviewSummary(guildId, type);
         const embed = buildEmptyEmbed(
-          'Sem recomendacoes',
+          t('recommend.empty.title'),
           summary.totalReviews
-            ? `Voce ja avaliou tudo ou faltam dados. Tente avaliar mais ${formatTypeLabel(type)}.`
-            : `Ainda nao ha avaliacoes de ${formatTypeLabel(type)} no servidor.`,
+            ? t('recommend.empty.desc_with_data', { type: formatTypeLabel(t, type) })
+            : t('recommend.empty.desc_no_data', { type: formatTypeLabel(t, type) }),
         );
         await safeRespond(interaction, { embeds: [embed] });
         return;
@@ -172,26 +199,25 @@ export const recomendarCommand = {
       const embed = createSuziEmbed('primary')
         .setTitle(
           type === 'MOVIE'
-            ? `${EMOJI_MOVIE} Recomendacoes de filmes`
-            : `${EMOJI_GAME} Recomendacoes de jogos`,
+            ? `${EMOJI_MOVIE} ${t('recommend.title.movie')}`
+            : `${EMOJI_GAME} ${t('recommend.title.game')}`,
         )
-        .addFields({ name: 'Sugestoes', value: buildRecommendationLines(combined) });
+        .addFields({ name: t('recommend.field.suggestions'), value: buildRecommendationLines(t, combined) });
 
       if (tags.length) {
         embed.addFields({
-          name: `${EMOJI_SPARKLE} Baseado nas suas tags`,
+          name: `${EMOJI_SPARKLE} ${t('recommend.field.tags')}`,
           value: tags.map((tag) => `#${tag}`).join(' '),
         });
       }
       if (wantsRomanceClosed) {
-        embed.setFooter({ text: 'Filtro: romance com final fechado' });
+        embed.setFooter({ text: t('recommend.footer.romance_closed') });
       }
 
       await safeRespond(interaction, { embeds: [embed] });
     } catch (error) {
       logError('SUZI-CMD-002', error, { message: 'Erro no comando /recomendar', action });
-      await safeRespond(interaction, 'Nao consegui gerar recomendacoes agora. Tente novamente.');
+      await safeRespond(interaction, t('recommend.error'));
     }
   },
 };
-

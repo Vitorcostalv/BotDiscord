@@ -1,6 +1,7 @@
-﻿import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { env } from '../../config/env.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { hasRegisterPermission } from '../../services/permissionService.js';
 import {
   getCachedSummary,
@@ -23,11 +24,25 @@ const refreshCooldowns = new Map<string, number>();
 
 type SteamAction = 'link' | 'unlink' | 'view' | 'refresh';
 
+function localizedChoice(labelKey: string, value: SteamAction, emoji?: string) {
+  const en = tLang('en', labelKey);
+  const pt = tLang('pt', labelKey);
+  const prefix = emoji ? `${emoji} ` : '';
+  return {
+    name: `${prefix}${en}`,
+    name_localizations: {
+      'en-US': `${prefix}${en}`,
+      'pt-BR': `${prefix}${pt}`,
+    },
+    value,
+  };
+}
+
 const ACTION_CHOICES = [
-  { name: `${EMOJI_LINK} link`, value: 'link' },
-  { name: 'view', value: 'view' },
-  { name: `${EMOJI_REFRESH} refresh`, value: 'refresh' },
-  { name: 'unlink', value: 'unlink' },
+  localizedChoice('steam.action.link', 'link', EMOJI_LINK),
+  localizedChoice('steam.action.view', 'view'),
+  localizedChoice('steam.action.refresh', 'refresh', EMOJI_REFRESH),
+  localizedChoice('steam.action.unlink', 'unlink'),
 ];
 
 function isRefreshOnCooldown(userId: string): number | null {
@@ -40,58 +55,87 @@ function isRefreshOnCooldown(userId: string): number | null {
   return Math.ceil((expiresAt - now) / 1000);
 }
 
-function buildSteamField(summary: {
-  personaname: string;
-  personastate: number;
-  gameextrainfo?: string;
-  lastlogoff?: number;
-  profileurl?: string;
-}): string {
-  const status = mapPersonaState(summary.personastate);
-  const game = summary.gameextrainfo ? `${EMOJI_GAME} ${summary.gameextrainfo}` : '-';
-  const last = summary.lastlogoff ? `<t:${summary.lastlogoff}:R>` : '-';
+function buildSteamField(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  summary: {
+    personaname: string;
+    personastate: number;
+    gameextrainfo?: string;
+    lastlogoff?: number;
+    profileurl?: string;
+  },
+): string {
+  const stateKey = mapPersonaState(summary.personastate);
+  const status = t(`steam.status.${stateKey}`);
+  const displayName =
+    summary.personaname && summary.personaname !== 'Sem nome' ? summary.personaname : t('steam.field.unknown_name');
+  const game = summary.gameextrainfo ? `${EMOJI_GAME} ${summary.gameextrainfo}` : t('common.none');
+  const last = summary.lastlogoff ? `<t:${summary.lastlogoff}:R>` : t('common.none');
+  const profileLink = summary.profileurl ? summary.profileurl : t('common.none');
   const lines = [
-    `Nick: ${summary.personaname}`,
-    `Status: ${status}`,
-    `Jogando agora: ${game}`,
-    `Ultimo online: ${last}`,
-    `Link: ${summary.profileurl ?? '-'}`,
+    `${t('steam.field.name')}: ${displayName}`,
+    `${t('steam.field.status')}: ${status}`,
+    `${t('steam.field.playing')}: ${game}`,
+    `${t('steam.field.last_online')}: ${last}`,
+    `${t('steam.field.link')}: ${profileLink}`,
   ];
 
   if (!summary.gameextrainfo) {
-    lines.push('Obs: jogo atual so aparece se o perfil e detalhes estiverem publicos na Steam.');
+    lines.push(t('steam.note.private'));
   }
 
   return lines.join('\n');
 }
 
-function ensureSteamEnabled(): { ok: true } | { ok: false; embed: ReturnType<typeof createSuziEmbed> } {
+function ensureSteamEnabled(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): { ok: true } | { ok: false; embed: ReturnType<typeof createSuziEmbed> } {
   if (env.steamApiKey) {
     return { ok: true };
   }
   const embed = createSuziEmbed('warning')
-    .setTitle(`${EMOJI_WARNING} Steam desabilitado`)
-    .setDescription('Configure STEAM_API_KEY para habilitar a integracao com a Steam.');
+    .setTitle(`${EMOJI_WARNING} ${t('steam.disabled.title')}`)
+    .setDescription(t('steam.disabled.desc'));
   return { ok: false, embed };
 }
 
 export const steamCommand = {
   data: new SlashCommandBuilder()
     .setName('steam')
-    .setDescription('Gerencie a integracao com a Steam')
+    .setDescription(tLang('en', 'steam.command.desc'))
+    .setDescriptionLocalizations(getLocalized('steam.command.desc'))
     .addStringOption((option) =>
       option
         .setName('acao')
-        .setDescription('O que deseja fazer')
+        .setNameLocalizations(getLocalized('steam.option.action.name'))
+        .setDescription(tLang('en', 'steam.option.action.desc'))
+        .setDescriptionLocalizations(getLocalized('steam.option.action.desc'))
         .setRequired(true)
         .addChoices(...ACTION_CHOICES),
     )
     .addStringOption((option) =>
-      option.setName('steamid64').setDescription('SteamID64 (17 digitos)').setRequired(false),
+      option
+        .setName('steamid64')
+        .setNameLocalizations(getLocalized('steam.option.steamid.name'))
+        .setDescription(tLang('en', 'steam.option.steamid.desc'))
+        .setDescriptionLocalizations(getLocalized('steam.option.steamid.desc'))
+        .setRequired(false),
     )
-    .addUserOption((option) => option.setName('user').setDescription('Usuario alvo').setRequired(false))
+    .addUserOption((option) =>
+      option
+        .setName('user')
+        .setNameLocalizations(getLocalized('steam.option.user.name'))
+        .setDescription(tLang('en', 'steam.option.user.desc'))
+        .setDescriptionLocalizations(getLocalized('steam.option.user.desc'))
+        .setRequired(false),
+    )
     .addBooleanOption((option) =>
-      option.setName('force').setDescription('Sobrescreve vinculo existente').setRequired(false),
+      option
+        .setName('force')
+        .setNameLocalizations(getLocalized('steam.option.force.name'))
+        .setDescription(tLang('en', 'steam.option.force.desc'))
+        .setDescriptionLocalizations(getLocalized('steam.option.force.desc'))
+        .setRequired(false),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
@@ -99,9 +143,10 @@ export const steamCommand = {
       return;
     }
 
+    const t = getTranslator(interaction.guildId);
     const action = interaction.options.getString('acao', true) as SteamAction;
 
-    const enabled = ensureSteamEnabled();
+    const enabled = ensureSteamEnabled(t);
     if (!enabled.ok) {
       await safeRespond(interaction, { embeds: [enabled.embed] });
       return;
@@ -111,8 +156,8 @@ export const steamCommand = {
       const cooldown = isRefreshOnCooldown(interaction.user.id);
       if (cooldown) {
         const embed = createSuziEmbed('warning')
-          .setTitle('Calma ai')
-          .setDescription(`Aguarde ${cooldown}s para atualizar novamente.`);
+          .setTitle(t('steam.refresh.cooldown.title'))
+          .setDescription(t('steam.refresh.cooldown.desc', { wait: cooldown }));
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
@@ -126,24 +171,24 @@ export const steamCommand = {
         const steamId64 = interaction.options.getString('steamid64')?.trim();
         if (!steamId64) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Informe o SteamID64')
-            .setDescription('Use /steam acao:link steamid64:<17 digitos>.');
+            .setTitle(t('steam.link.missing_id.title'))
+            .setDescription(t('steam.link.missing_id.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
         if (!isSelf && !hasRegisterPermission(interaction)) {
           const embed = createSuziEmbed('warning')
-            .setTitle(`${EMOJI_WARNING} Permissao insuficiente`)
-            .setDescription('Voce precisa de Manage Guild ou do cargo mestre para vincular outra pessoa.');
+            .setTitle(`${EMOJI_WARNING} ${t('steam.link.permission.title')}`)
+            .setDescription(t('steam.link.permission.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
         if (!validateSteamId64(steamId64)) {
           const embed = createSuziEmbed('warning')
-            .setTitle('SteamID64 invalido')
-            .setDescription('Use o SteamID64 (17 digitos). Ex: 7656119...');
+            .setTitle(t('steam.link.invalid_id.title'))
+            .setDescription(t('steam.link.invalid_id.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -151,8 +196,8 @@ export const steamCommand = {
         const existing = getSteamLink(targetUser.id, interaction.guildId ?? null);
         if (existing && !force) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Vinculo ja existe')
-            .setDescription('Use /steam acao:link force:true para sobrescrever.');
+            .setTitle(t('steam.link.exists.title'))
+            .setDescription(t('steam.link.exists.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -163,8 +208,8 @@ export const steamCommand = {
         });
         if (!summaryResult.ok && summaryResult.reason === 'NOT_FOUND') {
           const embed = createSuziEmbed('warning')
-            .setTitle('Nao foi possivel vincular')
-            .setDescription('Perfil privado ou SteamID invalido.');
+            .setTitle(t('steam.link.failed.title'))
+            .setDescription(t('steam.link.failed.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -172,16 +217,19 @@ export const steamCommand = {
         linkSteam(targetUser.id, steamId64, interaction.user.id, interaction.guildId ?? null);
 
         const embed = createSuziEmbed('success')
-          .setTitle(`${EMOJI_LINK} Steam vinculado`)
-          .setDescription(`Conta Steam vinculada para <@${targetUser.id}>.`);
+          .setTitle(`${EMOJI_LINK} ${t('steam.link.success.title')}`)
+          .setDescription(t('steam.link.success.desc', { user: `<@${targetUser.id}>` }));
 
         if (summaryResult.ok) {
-          embed.addFields({ name: 'Perfil Steam', value: buildSteamField(summaryResult.summary) });
+          embed.addFields({ name: t('steam.field.profile'), value: buildSteamField(t, summaryResult.summary) });
           if (summaryResult.summary.avatarfull) {
             embed.setThumbnail(summaryResult.summary.avatarfull);
           }
         } else {
-          embed.addFields({ name: 'Perfil Steam', value: 'Perfil indisponivel agora. Tente /steam refresh depois.' });
+          embed.addFields({
+            name: t('steam.field.profile'),
+            value: t('steam.link.profile_unavailable'),
+          });
         }
 
         await safeRespond(interaction, { embeds: [embed] });
@@ -194,8 +242,8 @@ export const steamCommand = {
 
         if (!isSelf && !hasRegisterPermission(interaction)) {
           const embed = createSuziEmbed('warning')
-            .setTitle(`${EMOJI_WARNING} Permissao insuficiente`)
-            .setDescription('Voce precisa de Manage Guild ou do cargo mestre para remover vinculos.');
+            .setTitle(`${EMOJI_WARNING} ${t('steam.unlink.permission.title')}`)
+            .setDescription(t('steam.unlink.permission.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -203,15 +251,15 @@ export const steamCommand = {
         const removed = unlinkSteam(targetUser.id, interaction.guildId ?? null);
         if (!removed) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Nenhum vinculo encontrado')
-            .setDescription('Este usuario ainda nao possui Steam vinculado.');
+            .setTitle(t('steam.unlink.none.title'))
+            .setDescription(t('steam.unlink.none.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
         const embed = createSuziEmbed('success')
-          .setTitle('Vinculo removido')
-          .setDescription(`Steam desvinculado de <@${targetUser.id}>.`);
+          .setTitle(t('steam.unlink.success.title'))
+          .setDescription(t('steam.unlink.success.desc', { user: `<@${targetUser.id}>` }));
         await safeRespond(interaction, { embeds: [embed] });
         return;
       }
@@ -221,8 +269,8 @@ export const steamCommand = {
         const link = getSteamLink(targetUser.id, interaction.guildId ?? null);
         if (!link) {
           const embed = createSuziEmbed('warning')
-            .setTitle('Nenhum Steam vinculado')
-            .setDescription('Use /steam acao:link para vincular um SteamID64.');
+            .setTitle(t('steam.view.none.title'))
+            .setDescription(t('steam.view.none.desc'));
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
@@ -233,27 +281,27 @@ export const steamCommand = {
         });
         if (!summaryResult.ok) {
           const embed = createSuziEmbed('warning')
-            .setTitle(`${EMOJI_WARNING} Steam indisponivel`)
+            .setTitle(`${EMOJI_WARNING} ${t('steam.view.error.title')}`)
             .setDescription(
               summaryResult.reason === 'NOT_FOUND'
-                ? 'Perfil privado ou SteamID invalido.'
-                : 'Nao consegui carregar o perfil Steam agora.',
+                ? t('steam.view.error.not_found')
+                : t('steam.view.error.generic'),
             );
           await safeRespond(interaction, { embeds: [embed] });
           return;
         }
 
         const embed = createSuziEmbed('primary')
-          .setTitle(`${EMOJI_GAME} Perfil Steam`)
-          .setDescription(`Usuario: <@${targetUser.id}>`)
-          .addFields({ name: 'Detalhes', value: buildSteamField(summaryResult.summary) });
+          .setTitle(`${EMOJI_GAME} ${t('steam.view.title')}`)
+          .setDescription(t('steam.view.user', { user: `<@${targetUser.id}>` }))
+          .addFields({ name: t('steam.field.details'), value: buildSteamField(t, summaryResult.summary) });
 
         if (summaryResult.summary.avatarfull) {
           embed.setThumbnail(summaryResult.summary.avatarfull);
         }
 
         if (action === 'refresh') {
-          embed.setFooter({ text: `${EMOJI_REFRESH} Cache atualizado` });
+          embed.setFooter({ text: `${EMOJI_REFRESH} ${t('steam.view.cache_updated')}` });
         }
 
         await safeRespond(interaction, { embeds: [embed] });
@@ -261,9 +309,7 @@ export const steamCommand = {
       }
     } catch (error) {
       logError('SUZI-CMD-002', error, { message: 'Erro no comando /steam', action });
-      const embed = createSuziEmbed('warning')
-        .setTitle('Algo deu errado')
-        .setDescription('Nao consegui completar o comando /steam agora.');
+      const embed = createSuziEmbed('warning').setTitle(t('steam.error.title')).setDescription(t('steam.error.desc'));
       await safeRespond(interaction, { embeds: [embed] });
     }
   },

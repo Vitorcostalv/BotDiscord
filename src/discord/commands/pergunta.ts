@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { trackEvent } from '../../achievements/service.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { ask } from '../../llm/router.js';
 import { appendHistory as appendProfileHistory } from '../../services/historyService.js';
 import { formatSuziIntro, getPlayerProfile } from '../../services/profileService.js';
@@ -28,24 +29,46 @@ function safeText(text: string, maxLen: number): string {
 export const perguntaCommand = {
   data: new SlashCommandBuilder()
     .setName('pergunta')
-    .setDescription('Faca uma pergunta sobre jogos, filmes ou tutoriais')
-    .addStringOption((option) => option.setName('pergunta').setDescription('Sua pergunta').setRequired(true))
+    .setDescription(tLang('en', 'question.command.desc'))
+    .setDescriptionLocalizations(getLocalized('question.command.desc'))
+    .addStringOption((option) =>
+      option
+        .setName('pergunta')
+        .setDescription(tLang('en', 'question.option.question'))
+        .setDescriptionLocalizations(getLocalized('question.option.question'))
+        .setRequired(true),
+    )
     .addStringOption((option) =>
       option
         .setName('tipo')
-        .setDescription('Tipo da pergunta')
+        .setDescription(tLang('en', 'question.option.type'))
+        .setDescriptionLocalizations(getLocalized('question.option.type'))
         .setRequired(false)
-        .addChoices(
-          { name: 'JOGO', value: 'JOGO' },
-          { name: 'FILME', value: 'FILME' },
-          { name: 'TUTORIAL', value: 'TUTORIAL' },
-        ),
+            .addChoices(
+              {
+                name: tLang('en', 'question.type.game'),
+                value: 'JOGO',
+                name_localizations: getLocalized('question.type.game'),
+              },
+              {
+                name: tLang('en', 'question.type.movie'),
+                value: 'FILME',
+                name_localizations: getLocalized('question.type.movie'),
+              },
+              {
+                name: tLang('en', 'question.type.tutorial'),
+                value: 'TUTORIAL',
+                name_localizations: getLocalized('question.type.tutorial'),
+              },
+            ),
     ),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
       return;
     }
+
+    const t = getTranslator(interaction.guildId);
 
     await withCooldown(interaction, 'pergunta', async () => {
       const userId = interaction.user.id;
@@ -68,12 +91,11 @@ export const perguntaCommand = {
             limit: 5,
           });
           if (closedMovies.length) {
-            scopeHint = `Filmes com final fechado marcados no servidor: ${closedMovies
-              .map((item) => item.name)
-              .join(', ')}. Se nao tiver certeza, avise.`;
+            scopeHint = t('question.scope.closed', {
+              list: closedMovies.map((item) => item.name).join(', '),
+            });
           } else {
-            scopeHint =
-              'Nao ha filmes marcados como final fechado no servidor. Se nao tiver certeza, avise o usuario.';
+            scopeHint = t('question.scope.none');
           }
         }
 
@@ -93,21 +115,29 @@ export const perguntaCommand = {
           content: question,
           response,
         });
-        appendProfileHistory(userId, {
-          type: 'pergunta',
-          label: safeText(question, 50),
-        }, interaction.guildId ?? null);
+        appendProfileHistory(
+          userId,
+          {
+            type: 'pergunta',
+            label: safeText(question, 50),
+          },
+          interaction.guildId ?? null,
+        );
 
-        const intro = formatSuziIntro(userId, {
-          displayName: interaction.user.globalName ?? interaction.user.username,
-          kind: 'pergunta',
-        }, interaction.guildId ?? null);
+        const intro = formatSuziIntro(
+          userId,
+          {
+            displayName: interaction.user.globalName ?? interaction.user.username,
+            kind: 'pergunta',
+          },
+          interaction.guildId ?? null,
+        );
 
         const embed = createSuziEmbed('primary')
-          .setTitle(`${EMOJI_BRAIN} Pergunta & Resposta`)
+          .setTitle(`${EMOJI_BRAIN} ${t('question.embed.title')}`)
           .addFields(
-            { name: 'Pergunta', value: safeText(question, 1024) },
-            { name: 'Resposta', value: safeText(response, 1024) },
+            { name: t('question.embed.question'), value: safeText(question, 1024) },
+            { name: t('question.embed.answer'), value: safeText(response, 1024) },
           );
 
         if (intro) {
@@ -118,13 +148,16 @@ export const perguntaCommand = {
 
         const xpResult = awardXp(userId, 5, { reason: 'pergunta', cooldownSeconds: 10 }, interaction.guildId ?? null);
         if (xpResult.leveledUp) {
-          await safeRespond(interaction, `${EMOJI_SPARKLE} Voce subiu para o nivel ${xpResult.newLevel} da Suzi!`);
+          await safeRespond(
+            interaction,
+            t('question.level_up', { level: xpResult.newLevel, emoji: EMOJI_SPARKLE }),
+          );
         }
 
         try {
           const { unlocked } = trackEvent(userId, 'pergunta');
           unlockTitlesFromAchievements(userId, unlocked);
-          const unlockEmbed = buildAchievementUnlockEmbed(unlocked);
+          const unlockEmbed = buildAchievementUnlockEmbed(t, unlocked);
           if (unlockEmbed) {
             await safeRespond(interaction, { embeds: [unlockEmbed] });
           }
@@ -133,7 +166,7 @@ export const perguntaCommand = {
         }
       } catch (error) {
         logError('SUZI-CMD-002', error, { message: 'Erro no comando /pergunta' });
-        await safeRespond(interaction, toPublicMessage('SUZI-CMD-002'));
+        await safeRespond(interaction, toPublicMessage('SUZI-CMD-002', interaction.guildId));
       }
     });
   },

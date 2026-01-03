@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 
 import { env } from '../../config/env.js';
+import { getLocalized, getTranslator, tLang } from '../../i18n/index.js';
 import { getRouterStatus } from '../../llm/router.js';
 import { getStatus } from '../../services/geminiUsageService.js';
 import { getGuildStats } from '../../services/rollHistoryService.js';
@@ -15,35 +16,43 @@ const EMOJI_PACKAGE = '\u{1F4E6}';
 const EMOJI_TREND = '\u{1F4C8}';
 const EMOJI_TROPHY = '\u{1F3C6}';
 
-function formatValue(value: number | null): string {
-  if (value === null) return 'n/d';
+function formatValue(t: (key: string, vars?: Record<string, string | number>) => string, value: number | null): string {
+  if (value === null) return t('status.value.na');
   return String(value);
 }
 
-function formatCooldown(ms: number): string {
-  if (ms <= 0) return 'disponivel';
-  return `${Math.ceil(ms / 1000)}s`;
+function formatCooldown(t: (key: string, vars?: Record<string, string | number>) => string, ms: number): string {
+  if (ms <= 0) return t('status.cooldown.available');
+  return t('status.cooldown.seconds', { seconds: Math.ceil(ms / 1000) });
 }
 
-function formatTop(list: Array<{ userId: string; count: number }>): string {
-  if (!list.length) return 'Nenhum dado ainda.';
+function formatTop(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  list: Array<{ userId: string; count: number }>,
+): string {
+  if (!list.length) return t('status.top.empty');
   return list.map((item, index) => `${index + 1}. <@${item.userId}> - ${item.count}`).join('\n');
 }
 
 export const statusCommand = {
-  data: new SlashCommandBuilder().setName('status').setDescription('Status do Gemini e rolagens do servidor'),
+  data: new SlashCommandBuilder()
+    .setName('status')
+    .setDescription(tLang('en', 'status.command.desc'))
+    .setDescriptionLocalizations(getLocalized('status.command.desc')),
   async execute(interaction: ChatInputCommandInteraction) {
     const canReply = await safeDeferReply(interaction, false);
     if (!canReply) {
       return;
     }
 
+    const t = getTranslator(interaction.guildId);
+
     const status = getStatus({ guildId: interaction.guildId, userId: interaction.user.id });
     const routerStatus = getRouterStatus();
     const hasGroq = Boolean(env.groqApiKey);
     const embed = createSuziEmbed(status.enabled || hasGroq ? 'primary' : 'warning')
-      .setTitle(`${EMOJI_CHART} Status da Suzi`)
-      .setDescription('Estado atual dos sistemas e uso de IA');
+      .setTitle(`${EMOJI_CHART} ${t('status.title')}`)
+      .setDescription(t('status.description'));
 
     const guildCount = status.guild ? status.guild.countToday : null;
     const userCount = status.user ? status.user.countToday : null;
@@ -67,9 +76,13 @@ export const statusCommand = {
     const isFallback = activeProvider !== primary;
     const activeModel =
       activeProvider === 'gemini'
-        ? routerStatus.models.gemini || 'n/d'
-        : `${routerStatus.models.groqFast || 'n/d'} / ${routerStatus.models.groqSmart || 'n/d'}`;
-    const modelSummary = `Gemini ${routerStatus.models.gemini || 'n/d'} | Groq fast ${routerStatus.models.groqFast || 'n/d'} | Groq smart ${routerStatus.models.groqSmart || 'n/d'}`;
+        ? routerStatus.models.gemini || t('status.value.na')
+        : `${routerStatus.models.groqFast || t('status.value.na')} / ${routerStatus.models.groqSmart || t('status.value.na')}`;
+    const modelSummary = t('status.models.summary', {
+      gemini: routerStatus.models.gemini || t('status.value.na'),
+      groqFast: routerStatus.models.groqFast || t('status.value.na'),
+      groqSmart: routerStatus.models.groqSmart || t('status.value.na'),
+    });
 
     let rollStats: ReturnType<typeof getGuildStats> | null = null;
     let rollError = false;
@@ -82,71 +95,78 @@ export const statusCommand = {
       }
     }
 
-    const historyLines: string[] = [`Gemini total: ${status.global.countTotal}`];
+    const historyLines: string[] = [t('status.history.gemini_total', { total: status.global.countTotal })];
     if (!interaction.guildId) {
-      historyLines.push('Rolagens: disponivel apenas em servidores.');
+      historyLines.push(t('status.history.guild_only'));
     } else if (rollError || !rollStats) {
-      historyLines.push('Rolagens: indisponivel agora.');
+      historyLines.push(t('status.history.unavailable'));
     } else {
-      historyLines.push(`${EMOJI_CHART} Rolagens (24h): ${rollStats.total24h}`);
-      historyLines.push(`${EMOJI_CHART} Rolagens (total): ${rollStats.totalAll}`);
+      historyLines.push(t('status.history.rolls_24h', { total: rollStats.total24h, emoji: EMOJI_CHART }));
+      historyLines.push(t('status.history.rolls_total', { total: rollStats.totalAll, emoji: EMOJI_CHART }));
     }
 
-    let topLines = 'Nenhum dado ainda.';
+    let topLines = t('status.top.empty');
     if (!interaction.guildId) {
-      topLines = 'Disponivel apenas em servidores.';
+      topLines = t('status.top.guild_only');
     } else if (rollError || !rollStats) {
-      topLines = 'Nao consegui carregar os dados agora. Tente novamente.';
+      topLines = t('status.top.unavailable');
     } else {
-      topLines = [`24h:\n${formatTop(rollStats.top24h)}`, `Total:\n${formatTop(rollStats.topAll)}`].join('\n');
+      topLines = [
+        `${t('status.top.last_24h')}\n${formatTop(t, rollStats.top24h)}`,
+        `${t('status.top.total')}\n${formatTop(t, rollStats.topAll)}`,
+      ].join('\n');
     }
 
     const iaLines = [
-      `Provider ativo: ${activeProvider.toUpperCase()}${isFallback ? ' (fallback)' : ''}`,
-      `Primario: ${primary.toUpperCase()}`,
-      `Modelo ativo: ${activeModel}`,
-      `Modelos: ${modelSummary}`,
+      t('status.ai.active', {
+        provider: activeProvider.toUpperCase(),
+        fallback: isFallback ? t('status.ai.fallback') : '',
+      }),
+      t('status.ai.primary', { provider: primary.toUpperCase() }),
+      t('status.ai.model_active', { model: activeModel }),
+      t('status.ai.models', { models: modelSummary }),
     ];
     if (!geminiEnabled) {
-      iaLines.push('Gemini: desabilitado');
+      iaLines.push(t('status.ai.gemini_disabled'));
     }
 
     embed.addFields(
-      { name: `${EMOJI_BRAIN} IA Ativa`, value: iaLines.join('\n') },
+      { name: `${EMOJI_BRAIN} ${t('status.fields.ai')}`, value: iaLines.join('\n') },
       {
-        name: `${EMOJI_TIMER} Cooldowns`,
-        value: `Gemini: ${formatCooldown(routerStatus.cooldowns.geminiMs)}\nGroq: ${formatCooldown(
+        name: `${EMOJI_TIMER} ${t('status.fields.cooldowns')}`,
+        value: `${t('status.ai.gemini')}: ${formatCooldown(t, routerStatus.cooldowns.geminiMs)}\n${t('status.ai.groq')}: ${formatCooldown(
+          t,
           routerStatus.cooldowns.groqMs,
         )}`,
         inline: true,
       },
       {
-        name: `${EMOJI_PACKAGE} Cache`,
-        value: `Hits: ${routerStatus.cacheHits}\nMisses: ${routerStatus.cacheMisses}`,
+        name: `${EMOJI_PACKAGE} ${t('status.fields.cache')}`,
+        value: `${t('status.cache.hits')}: ${routerStatus.cacheHits}\n${t('status.cache.misses')}: ${routerStatus.cacheMisses}`,
         inline: true,
       },
       {
-        name: `${EMOJI_TREND} Uso Hoje`,
+        name: `${EMOJI_TREND} ${t('status.fields.today')}`,
         value: [
-          `Gemini: ${status.global.countToday}`,
-          `Groq: ${routerStatus.providerCounts.groq}`,
-          `Servidor: ${formatValue(guildCount)}`,
-          `Usuario: ${formatValue(userCount)}`,
-          `Restantes: ${formatValue(status.remaining)}`,
+          `${t('status.ai.gemini')}: ${status.global.countToday}`,
+          `${t('status.ai.groq')}: ${routerStatus.providerCounts.groq}`,
+          `${t('status.usage.guild')}: ${formatValue(t, guildCount)}`,
+          `${t('status.usage.user')}: ${formatValue(t, userCount)}`,
+          `${t('status.usage.remaining')}: ${formatValue(t, status.remaining)}`,
         ].join('\n'),
       },
       {
-        name: `${EMOJI_CHART} Historico`,
+        name: `${EMOJI_CHART} ${t('status.fields.history')}`,
         value: historyLines.join('\n'),
       },
       {
-        name: `${EMOJI_TROPHY} Top Roladores`,
+        name: `${EMOJI_TROPHY} ${t('status.fields.top')}`,
         value: topLines,
       },
     );
 
     embed.setFooter({
-      text: 'Reset diario depende do fuso; limite real pode variar conforme quota do projeto.',
+      text: t('status.footer'),
     });
 
     await safeRespond(interaction, { embeds: [embed] });
