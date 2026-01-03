@@ -43,6 +43,7 @@ export type RouterAskResult = {
   intent: LlmIntent;
   fromCache: boolean;
   source: 'llm' | 'cache' | 'local' | 'fallback';
+  errorType?: string;
 };
 
 export type AdminUseCase = 'ADMIN_MONITOR' | 'ADMIN_TEMPLATES';
@@ -340,16 +341,17 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
 
   const diceText = handleLocalDice(t, input.question);
   if (diceText) {
-    return {
-      text: diceText,
-      provider: getPrimaryProvider(),
-      model: 'local',
-      latencyMs: 0,
-      intent,
-      fromCache: false,
-      source: 'local',
-    };
-  }
+      return {
+        text: diceText,
+        provider: getPrimaryProvider(),
+        model: 'local',
+        latencyMs: 0,
+        intent,
+        fromCache: false,
+        source: 'local',
+        errorType: undefined,
+      };
+    }
 
   const request = buildRequest(t, input, intent);
   let candidates = pickProviders(intent).filter((candidate) => isProviderEnabled(candidate.provider));
@@ -362,6 +364,7 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
       intent,
       fromCache: false,
       source: 'fallback',
+      errorType: 'no_provider',
     };
   }
 
@@ -408,6 +411,7 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
         intent,
         fromCache: false,
         source: 'llm',
+        errorType: undefined,
       };
     }
 
@@ -423,6 +427,7 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
       intent,
       fromCache: false,
       source: 'fallback',
+      errorType: response.errorType,
     };
     logWarn('SUZI-LLM-001', new Error('LLM falhou'), {
       provider: response.provider,
@@ -440,6 +445,7 @@ export async function ask(input: AskInput): Promise<RouterAskResult> {
       intent,
       fromCache: false,
       source: 'fallback',
+      errorType: 'fallback',
     }
   );
 }
@@ -487,6 +493,7 @@ export async function askWithMessages(input: AskMessagesInput): Promise<RouterAs
       intent,
       fromCache: false,
       source: 'fallback',
+      errorType: 'no_provider',
     };
   }
 
@@ -536,6 +543,7 @@ export async function askWithMessages(input: AskMessagesInput): Promise<RouterAs
         intent,
         fromCache: false,
         source: 'llm',
+        errorType: undefined,
       };
     }
 
@@ -551,6 +559,7 @@ export async function askWithMessages(input: AskMessagesInput): Promise<RouterAs
       intent,
       fromCache: false,
       source: 'fallback',
+      errorType: response.errorType,
     };
     logWarn('SUZI-LLM-001', new Error('LLM falhou'), {
       provider: response.provider,
@@ -568,6 +577,7 @@ export async function askWithMessages(input: AskMessagesInput): Promise<RouterAs
       intent,
       fromCache: false,
       source: 'fallback',
+      errorType: 'fallback',
     }
   );
 }
@@ -585,6 +595,7 @@ export async function askAdmin(input: AdminAskInput): Promise<RouterAskResult> {
       intent: 'deep_answer',
       fromCache: false,
       source: 'fallback',
+      errorType: 'no_provider',
     };
   }
 
@@ -611,6 +622,7 @@ export async function askAdmin(input: AdminAskInput): Promise<RouterAskResult> {
       intent: 'deep_answer',
       fromCache: false,
       source: 'llm',
+      errorType: undefined,
     };
   }
 
@@ -626,6 +638,7 @@ export async function askAdmin(input: AdminAskInput): Promise<RouterAskResult> {
     intent: 'deep_answer',
     fromCache: false,
     source: 'fallback',
+    errorType: response.errorType,
   };
 }
 

@@ -230,10 +230,29 @@ export const recomendarCommand = {
           });
 
           let embed = createSuziEmbed('primary').setTitle(`${EMOJI_MOVIE} ${t('recommend.movie.result.title')}`);
-          if (result.error) {
-            embed = buildEmptyEmbed(t('recommend.movie.result.error.title'), t('recommend.movie.result.error.desc'));
-          } else if (result.recommendations.length < 3) {
-            embed = buildEmptyEmbed(t('recommend.movie.result.none.title'), t('recommend.movie.result.none.desc'));
+          if (result.recommendations.length < 3) {
+            const reason = result.errorReason ?? 'filtered_all_closed_ending';
+            const errorMap: Record<string, { title: string; desc: string }> = {
+              json_parse_failed: {
+                title: t('recommend.movie.result.parse_failed.title'),
+                desc: t('recommend.movie.result.parse_failed.desc'),
+              },
+              filtered_all_closed_ending: {
+                title: t('recommend.movie.result.filtered.title'),
+                desc: t('recommend.movie.result.filtered.desc'),
+              },
+              timeout: {
+                title: t('recommend.movie.result.timeout.title'),
+                desc: t('recommend.movie.result.timeout.desc'),
+              },
+              provider_error: {
+                title: t('recommend.movie.result.provider_error.title'),
+                desc: t('recommend.movie.result.provider_error.desc'),
+              },
+            };
+            const fallback = errorMap.filtered_all_closed_ending;
+            const message = errorMap[reason] ?? fallback;
+            embed = buildEmptyEmbed(message.title, message.desc);
           } else {
             const lines: string[] = [];
             if (genreValue.trim()) {

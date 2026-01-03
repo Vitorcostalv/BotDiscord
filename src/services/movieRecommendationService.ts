@@ -1,7 +1,6 @@
-import { createHash } from 'crypto';
-
 import { getTranslator } from '../i18n/index.js';
-import { askWithMessages } from '../llm/router.js';
+import { askWithMessages, type RouterAskResult } from '../llm/router.js';
+import { logInfo, logWarn } from '../utils/logging.js';
 
 import { listUserReviews, type UserReviewItem } from './reviewService.js';
 
@@ -19,7 +18,7 @@ export type MovieRecommendationResult = {
   recommendations: MovieRecommendation[];
   seeds: string[];
   hasReviews: boolean;
-  error?: 'llm' | 'parse';
+  errorReason?: 'filtered_all_closed_ending' | 'json_parse_failed' | 'timeout' | 'provider_error';
 };
 
 type RecommendMoviesInput = {
@@ -76,15 +75,6 @@ export function pickMovieSeeds(reviews: UserReviewItem[]): string[] {
   return seeds;
 }
 
-function extractJson(text: string): string | null {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    return null;
-  }
-  return text.slice(start, end + 1);
-}
-
 function normalizeConfidence(value: unknown): 'high' | 'medium' | 'low' {
   if (typeof value !== 'string') return 'low';
   const normalized = value.trim().toLowerCase();
@@ -102,31 +92,145 @@ function sanitizeSummary(text: unknown, maxLen: number): string {
   return `${normalized.slice(0, Math.max(0, maxLen - 3)).trimEnd()}...`;
 }
 
-function parseRecommendations(raw: string, limit: number): MovieRecommendation[] {
-  const jsonText = extractJson(raw);
-  if (!jsonText) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    return [];
+function extractCodeBlock(text: string): string | null {
+  const jsonMatch = /```json\s*([\s\S]*?)```/i.exec(text);
+  if (jsonMatch?.[1]) return jsonMatch[1].trim();
+  const anyMatch = /```([\s\S]*?)```/i.exec(text);
+  if (anyMatch?.[1]) return anyMatch[1].trim();
+  return null;
+}
+
+function extractBalancedJson(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (char === '\\') {
+        escape = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}') depth -= 1;
+    if (depth === 0 && i > start) {
+      return text.slice(start, i + 1);
+    }
   }
-  if (!parsed || typeof parsed !== 'object') return [];
-  const data = parsed as { recommendations?: unknown };
-  if (!Array.isArray(data.recommendations)) return [];
+  return null;
+}
+
+function parseLLMJsonSafe(raw: string): { data?: unknown; parseOk: boolean } {
+  try {
+    return { data: JSON.parse(raw), parseOk: true };
+  } catch {
+    // continue
+  }
+
+  const codeBlock = extractCodeBlock(raw);
+  if (codeBlock) {
+    try {
+      return { data: JSON.parse(codeBlock), parseOk: true };
+    } catch {
+      // continue
+    }
+  }
+
+  const balanced = extractBalancedJson(raw);
+  if (balanced) {
+    try {
+      return { data: JSON.parse(balanced), parseOk: true };
+    } catch {
+      // continue
+    }
+  }
+
+  return { parseOk: false };
+}
+
+function parseCandidateTitles(raw: string): { titles: string[]; parseOk: boolean } {
+  const parsed = parseLLMJsonSafe(raw);
+  const titles: string[] = [];
+  const seen = new Set<string>();
+
+  const addTitle = (value: string) => {
+    const normalized = value.trim().replace(/^"|"$/g, '');
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    titles.push(normalized);
+  };
+
+  if (parsed.parseOk) {
+    const data = parsed.data;
+    const list = Array.isArray(data)
+      ? data
+      : (data as { recommendations?: unknown; candidates?: unknown }).recommendations ??
+        (data as { candidates?: unknown }).candidates;
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        if (typeof item === 'string') {
+          addTitle(item);
+        } else if (item && typeof item === 'object') {
+          const rawEntry = item as Record<string, unknown>;
+          if (typeof rawEntry.title === 'string') addTitle(rawEntry.title);
+          if (typeof rawEntry.name === 'string') addTitle(rawEntry.name);
+        }
+      }
+    }
+  }
+
+  if (!titles.length) {
+    const lines = raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (const line of lines) {
+      const cleaned = line.replace(/^\s*[-*\u2022]?\s*\d*[.)-]?\s*/g, '');
+      const title = cleaned.split(/\s[-–—]\s/)[0] ?? cleaned;
+      addTitle(title);
+    }
+  }
+
+  return { titles: titles.slice(0, 10), parseOk: parsed.parseOk };
+}
+
+function parseRecommendationEntries(raw: string): { entries: MovieRecommendation[]; parseOk: boolean } {
+  const parsed = parseLLMJsonSafe(raw);
+  if (!parsed.parseOk || !parsed.data || typeof parsed.data !== 'object') {
+    return { entries: [], parseOk: false };
+  }
+
+  const list = Array.isArray(parsed.data)
+    ? parsed.data
+    : (parsed.data as { recommendations?: unknown }).recommendations;
+  if (!Array.isArray(list)) {
+    return { entries: [], parseOk: false };
+  }
 
   const results: MovieRecommendation[] = [];
   const seen = new Set<string>();
-  for (const entry of data.recommendations) {
+  for (const entry of list) {
     if (!entry || typeof entry !== 'object') continue;
     const rawEntry = entry as Record<string, unknown>;
     const title = typeof rawEntry.title === 'string' ? rawEntry.title.trim() : '';
     if (!title) continue;
     const summary = sanitizeSummary(rawEntry.summary, 180);
     if (!summary) continue;
-    const closedEnding = rawEntry.closedEnding === true;
     const confidence = normalizeConfidence(rawEntry.closedEndingConfidence);
-    if (!closedEnding || confidence === 'low') continue;
+    const closedEnding = rawEntry.closedEnding === true;
     const key = title.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -137,21 +241,161 @@ function parseRecommendations(raw: string, limit: number): MovieRecommendation[]
       summary,
       why: sanitizeSummary(rawEntry.why, 120) || undefined,
       closedEndingConfidence: confidence,
-      closedEnding: true,
+      closedEnding,
     });
-    if (results.length >= limit) break;
   }
 
-  return results;
-}
-
-function hashSeed(text: string): string {
-  return createHash('sha256').update(text).digest('hex').slice(0, 16);
+  return { entries: results, parseOk: true };
 }
 
 function isRomanceGenre(genre: string): boolean {
   const normalized = genre.toLowerCase();
   return normalized.includes('romance') || normalized.includes('romant') || normalized === 'romcom';
+}
+
+function resolveErrorReason(response: RouterAskResult): MovieRecommendationResult['errorReason'] {
+  if (response.errorType === 'timeout') return 'timeout';
+  if (response.source === 'fallback') return 'provider_error';
+  return 'provider_error';
+}
+
+function filterClosedEnding(entries: MovieRecommendation[], limit: number): MovieRecommendation[] {
+  const filtered = entries.filter(
+    (entry) => entry.closedEnding === true && entry.closedEndingConfidence === 'high',
+  );
+  return filtered.slice(0, limit);
+}
+
+async function fixJsonWithLlm(
+  raw: string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  guildId: string,
+  userId: string,
+): Promise<string | null> {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const prompt = [t('recommend.llm.fix_json'), t('recommend.llm.schema'), trimmed.slice(0, 4000)].join('\n');
+  const response = await askWithMessages({
+    messages: [
+      { role: 'system', content: t('recommend.llm.fix_json.system') },
+      { role: 'user', content: prompt },
+    ],
+    intentOverride: 'recommendation',
+    guildId,
+    userId,
+    maxOutputTokens: 600,
+  });
+  if (response.source !== 'llm') return null;
+  return response.text;
+}
+
+async function generateCandidates(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  input: {
+    guildId: string;
+    userId: string;
+    seeds: string[];
+    genreLabel: string;
+    romanceRule: string;
+    mainstreamHint: boolean;
+  },
+): Promise<{
+  candidates: string[];
+  response: RouterAskResult;
+  rawLength: number;
+  parseOk: boolean;
+}> {
+  const basePrompt = input.seeds.length
+    ? t('recommend.llm.candidates.user.seeds', {
+        seeds: input.seeds.join(', '),
+        genre: input.genreLabel,
+        limit: 10,
+      })
+    : t('recommend.llm.candidates.user.no_seeds', { genre: input.genreLabel, limit: 10 });
+  const mainstreamLine = input.mainstreamHint ? t('recommend.llm.candidates.user.mainstream') : '';
+  const content = [basePrompt, input.romanceRule, mainstreamLine, t('recommend.llm.candidates.format')]
+    .filter(Boolean)
+    .join('\n');
+
+  const response = await askWithMessages({
+    messages: [
+      { role: 'system', content: t('recommend.llm.candidates.system') },
+      { role: 'user', content },
+    ],
+    intentOverride: 'recommendation',
+    guildId: input.guildId,
+    userId: input.userId,
+    maxOutputTokens: 700,
+  });
+
+  const rawLength = response.text.length;
+  const parsed = response.source === 'llm' ? parseCandidateTitles(response.text) : { titles: [], parseOk: false };
+  return { candidates: parsed.titles, response, rawLength, parseOk: parsed.parseOk };
+}
+
+async function validateCandidates(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  input: {
+    guildId: string;
+    userId: string;
+    candidates: string[];
+    genreLabel: string;
+    romanceRule: string;
+  },
+): Promise<{
+  recommendations: MovieRecommendation[];
+  response: RouterAskResult;
+  rawLength: number;
+  parseOk: boolean;
+  beforeCount: number;
+}> {
+  const listText = input.candidates.map((item, index) => `${index + 1}. ${item}`).join('\n');
+  const prompt = [
+    t('recommend.llm.validate.user', { genre: input.genreLabel }),
+    input.romanceRule,
+    listText,
+    t('recommend.llm.schema'),
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  let response = await askWithMessages({
+    messages: [
+      { role: 'system', content: t('recommend.llm.validate.system') },
+      { role: 'user', content: prompt },
+    ],
+    intentOverride: 'recommendation',
+    guildId: input.guildId,
+    userId: input.userId,
+    maxOutputTokens: 900,
+  });
+
+  if (response.source !== 'llm') {
+    return { recommendations: [], response, rawLength: 0, parseOk: false, beforeCount: 0 };
+  }
+
+  let parsed = parseRecommendationEntries(response.text);
+  if (!parsed.parseOk) {
+    const fixed = await fixJsonWithLlm(response.text, t, input.guildId, input.userId);
+    if (fixed) {
+      const fixedParsed = parseRecommendationEntries(fixed);
+      if (fixedParsed.parseOk) {
+        parsed = fixedParsed;
+        response = { ...response, text: fixed };
+      }
+    }
+  }
+
+  const beforeCount = parsed.entries.length;
+  const recommendations = filterClosedEnding(parsed.entries, 10);
+  const rawLength = response.text.length;
+  return {
+    recommendations,
+    response,
+    rawLength,
+    parseOk: parsed.parseOk,
+    beforeCount,
+  };
 }
 
 export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): Promise<MovieRecommendationResult> {
@@ -167,42 +411,102 @@ export async function recommendMoviesClosedEnding(input: RecommendMoviesInput): 
   const surprise = normalizedGenre ? isSurpriseGenre(normalizedGenre) : false;
 
   const genreLabel = normalizedGenre && !surprise ? normalizedGenre : t('recommend.llm.genre.any');
-
-  const seedsLine = seeds.length
-    ? t('recommend.llm.user.seeds', { seeds: seeds.join(', '), genre: genreLabel, limit })
-    : t('recommend.llm.user.no_seeds', { genre: genreLabel, limit });
-
   const romanceLine = wantsRomanceClosed ? t('recommend.llm.romance_rule') : '';
+  const seedCount = seeds.length;
 
-  const messages = [
-    { role: 'system' as const, content: t('recommend.llm.system') },
-    {
-      role: 'user' as const,
-      content: [seedsLine, romanceLine, t('recommend.llm.schema')].filter(Boolean).join('\n'),
-    },
-  ];
+  let resultRecommendations: MovieRecommendation[] = [];
+  let errorReason: MovieRecommendationResult['errorReason'];
 
-  const cacheKey = `movie-reco:${input.guildId}:${input.userId}:${hashSeed(
-    `${normalizedGenre}|${seeds.join(',')}|${wantsRomanceClosed}`,
-  )}`;
+  const runCycle = async (mainstreamHint: boolean) => {
+    const candidatesResult = await generateCandidates(t, {
+      guildId: input.guildId,
+      userId: input.userId,
+      seeds,
+      genreLabel,
+      romanceRule: romanceLine,
+      mainstreamHint,
+    });
 
-  const response = await askWithMessages({
-    messages,
-    intentOverride: 'recommendation',
-    guildId: input.guildId,
-    userId: input.userId,
-    cacheKey,
-    maxOutputTokens: 800,
-  });
+    logInfo('SUZI-RECO-001', 'Movie reco candidates', {
+      guildId: input.guildId,
+      userId: input.userId,
+      seedCount,
+      provider: candidatesResult.response.provider,
+      model: candidatesResult.response.model,
+      latencyMs: candidatesResult.response.latencyMs,
+      rawLength: candidatesResult.rawLength,
+      parseOk: candidatesResult.parseOk,
+      candidatesCount: candidatesResult.candidates.length,
+    });
 
-  if (response.source !== 'llm' || !response.text.trim()) {
-    return { recommendations: [], seeds, hasReviews, error: 'llm' };
+    if (candidatesResult.response.source !== 'llm') {
+      errorReason = resolveErrorReason(candidatesResult.response);
+      return;
+    }
+
+    if (!candidatesResult.candidates.length) {
+      errorReason = 'json_parse_failed';
+      return;
+    }
+
+    const validateResult = await validateCandidates(t, {
+      guildId: input.guildId,
+      userId: input.userId,
+      candidates: candidatesResult.candidates,
+      genreLabel,
+      romanceRule: romanceLine,
+    });
+
+    logInfo('SUZI-RECO-001', 'Movie reco validate', {
+      guildId: input.guildId,
+      userId: input.userId,
+      seedCount,
+      provider: validateResult.response.provider,
+      model: validateResult.response.model,
+      latencyMs: validateResult.response.latencyMs,
+      rawLength: validateResult.rawLength,
+      parseOk: validateResult.parseOk,
+      recommendationsCount: validateResult.beforeCount,
+      filteredCount: validateResult.recommendations.length,
+    });
+
+    if (validateResult.response.source !== 'llm') {
+      errorReason = resolveErrorReason(validateResult.response);
+      return;
+    }
+
+    if (!validateResult.parseOk) {
+      errorReason = 'json_parse_failed';
+      return;
+    }
+
+    if (validateResult.recommendations.length < 3) {
+      errorReason = 'filtered_all_closed_ending';
+      return;
+    }
+
+    resultRecommendations = validateResult.recommendations.slice(0, limit);
+  };
+
+  await runCycle(false);
+
+  if (resultRecommendations.length < 3 && errorReason === 'filtered_all_closed_ending') {
+    await runCycle(true);
   }
 
-  const recommendations = parseRecommendations(response.text, limit);
-  if (!recommendations.length) {
-    return { recommendations: [], seeds, hasReviews, error: 'parse' };
+  if (resultRecommendations.length < 3) {
+    logWarn('SUZI-RECO-001', new Error('Movie reco empty'), {
+      guildId: input.guildId,
+      userId: input.userId,
+      seedCount,
+      reason: errorReason ?? 'filtered_all_closed_ending',
+    });
   }
 
-  return { recommendations, seeds, hasReviews };
+  return {
+    recommendations: resultRecommendations,
+    seeds,
+    hasReviews,
+    errorReason: resultRecommendations.length >= 3 ? undefined : errorReason ?? 'filtered_all_closed_ending',
+  };
 }
