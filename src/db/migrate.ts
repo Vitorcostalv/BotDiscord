@@ -197,6 +197,15 @@ export function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_review_items_rank
       ON review_items (guild_id, type, stars_sum, count);
 
+    CREATE TABLE IF NOT EXISTS recommendation_history (
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      media_type TEXT NOT NULL CHECK(media_type IN ('GAME','MOVIE')),
+      items_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (guild_id, user_id, media_type)
+    );
+
     CREATE TABLE IF NOT EXISTS gemini_usage (
       scope TEXT NOT NULL,
       scope_id TEXT NOT NULL,
