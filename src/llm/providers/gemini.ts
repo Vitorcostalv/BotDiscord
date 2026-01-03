@@ -93,6 +93,7 @@ export async function callGemini(request: LlmRequest, modelOverride?: string): P
         contents,
         generationConfig: {
           maxOutputTokens: request.maxOutputTokens,
+          responseMimeType: request.responseFormat === 'json_object' ? 'application/json' : undefined,
         },
       }),
     });

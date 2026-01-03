@@ -50,6 +50,7 @@ export async function callGroq(request: LlmRequest, model: string): Promise<LlmR
         })),
         max_tokens: request.maxOutputTokens,
         temperature: 0.7,
+        response_format: request.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       }),
     });
 

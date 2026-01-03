@@ -224,6 +224,7 @@ async function fixJsonWithLlm(
     ],
     maxOutputTokens: 600,
     timeoutMs: 10_000,
+    responseFormat: 'json_object',
   };
 
   const response =
@@ -345,6 +346,7 @@ async function validateCandidates(
     guildId: input.guildId,
     userId: input.userId,
     maxOutputTokens: 900,
+    responseFormat: 'json_object',
   });
 
   if (response.source !== 'llm') {

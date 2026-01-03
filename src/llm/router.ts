@@ -33,6 +33,7 @@ type AskMessagesInput = {
   cacheKey?: string;
   cacheTtlMs?: number;
   maxOutputTokens?: number;
+  responseFormat?: 'json_object' | 'text';
 };
 
 export type RouterAskResult = {
@@ -481,6 +482,7 @@ export async function askWithMessages(input: AskMessagesInput): Promise<RouterAs
     messages: input.messages,
     maxOutputTokens: input.maxOutputTokens ?? resolveMaxTokens(intent),
     timeoutMs: env.llmTimeoutMs,
+    responseFormat: input.responseFormat,
   };
 
   let candidates = pickProviders(intent).filter((candidate) => isProviderEnabled(candidate.provider));

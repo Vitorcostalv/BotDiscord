@@ -11,6 +11,7 @@ export type LlmRequest = {
   messages: LlmMessage[];
   maxOutputTokens: number;
   timeoutMs: number;
+  responseFormat?: 'json_object' | 'text';
 };
 
 export type LlmUsage = {
